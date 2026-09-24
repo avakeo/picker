@@ -1,0 +1,1 @@
+candidate_id,eligible,search_ndcg10,similarity_recall10,zero_shot_mean_ap,custom_macro_f1,load_ms_p95,inference_ms_p95,model_total_bytes,peak_memory_bytes,tokenizer_image_cosine_min,tokenizer_text_cosine_min,query_en_ndcg10,query_en_recall10,notes

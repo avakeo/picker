@@ -15,18 +15,40 @@
 
 このADRの基準を計測前コミットで固定する。計測結果を見て重み、足切り条件、クエリ、タグ、ラベルを変更しない。変更が必要な場合は別コミットで理由を記録し、変更後の条件で再計測する。
 
+計測結果は、候補ごとに生の値を `tools/t0-3/raw-results.csv` へ保存する。点数化後の表だけを保存してはならない。重みや上限を変更した場合は、生データを変更せず、`tools/t0-3/scoring.template.json` を更新して再計算する。
+
 ### 重み
 
 | 評価項目 | 重み |
 |---|---:|
 | 自然言語検索（nDCG@10） | 20 |
 | 類似画像検索（Recall@10） | 15 |
-| ゼロショットタグ（タグ別・macro F1） | 15 |
+| ゼロショットタグ（タグ別APの平均） | 15 |
 | カスタムタグ（テスト分割のmacro F1） | 15 |
-| 参照実装との埋め込み・Tokenizer一致 | 15 |
-| ロード・推論時間（p50/p95） | 10 |
-| モデル・テキストエンコーダのサイズとメモリ | 5 |
-| 配布可能性、ライセンス、運用リスク | 5 |
+| ロード時間（p95） | 10 |
+| 推論時間（p95） | 15 |
+| モデル合計サイズ | 5 |
+| ピークメモリ | 5 |
+
+合計100点。Tokenizer一致、ライセンス、ONNX/Core ML EP可否は配点に含めず、足切り条件として扱う。
+
+### 生データから点数への換算
+
+各指標は、ライセンス足切りと仮上限を通過した候補集合に対して、候補間のmin-max正規化を行う。値は0〜100点に変換し、重みを掛ける。
+
+高いほど良い指標は次式とする。
+
+```text
+normalized = 100 * (value - min(value)) / (max(value) - min(value))
+```
+
+低いほど良い指標（ロード時間、推論時間、モデルサイズ、メモリ）は次式とする。
+
+```text
+normalized = 100 * (max(value) - value) / (max(value) - min(value))
+```
+
+候補間の値が同じ場合は、その指標を全候補100点とする。最終点数は各 `normalized / 100 * weight` の合計とする。評価対象から除外された候補はmin-maxの範囲に含めない。再計算は `tools/t0-3/score_results.py` で行い、英語fallback値は入力に保持するが点数計算には使用しない。
 
 ### 計測前のライセンス足切り
 
@@ -50,38 +72,53 @@
 - 画像・テキスト埋め込みのcosine similarityが固定サンプルで0.999未満の候補は不採用
 - 実測値を取得できない候補を、他候補の値で代用しない
 
+### 仮の上限
+
+以下は仮置きであり、あとから設定ファイルを変更して再計算できるようにする。上限を超えた候補は点数を下げるのではなく、ハード失格として扱う。
+
+- モデル合計サイズ: 600 MB
+- 推論時間 p95: 200 ms/画像
+- ピークメモリ: 1.5 GB
+
 ### 固定する計測条件
 
 - ユーザー提供の実写画像、クエリ、正解ラベルを使用する
 - 画像推論はbatch size 1、ウォームアップ後に複数回測定する
 - ロード時間、1枚あたりのp50/p95、ピークメモリ、モデルサイズを記録する
 - CPUとCore ML EPを同一前処理・同一入力で比較する
-- 日本語クエリを主評価とし、`query_en` がある場合だけ英語fallbackを別集計する
-- ゼロショットタグは固定語彙を使い、タグ別macro F1を算出する
+- 日本語クエリを主評価とし、`query_en` の英語fallbackは参考値として別集計し、主評価の点数には含めない
+- ゼロショットタグは固定語彙を使い、タグ別Average Precision（AP）の平均を主指標にする。閾値を固定して二値化したmacro F1は補助値としてのみ記録する
 - カスタムタグは`train`で分類器を学習し、未使用の`test`でmacro F1を算出する
 - 参照実装とRust/ONNX実装の画像・テキスト出力を固定サンプルで比較する
 
 ## 候補
 
-候補の初期候補は次の3つ以上とする。ライセンス欄は計測前に個別確認して埋め、未確認のまま計測しない。
+候補の初期候補は次の3つ以上とする。日本語・多言語候補を含める。ライセンス欄は計測前に個別確認して埋め、未確認のまま計測しない。確認できない候補は `tools/t0-3/candidates.csv` に除外理由を記録する。
 
 | 候補ID | モデルID | 公式参照先 | ライセンス状態 |
 |---|---|---|---|
-| siglip-base | `google/siglip-base-patch16-224` | Hugging Faceのモデルカード | 未確認 |
-| siglip2-base | `google/siglip2-base-patch16-224` | Hugging Faceのモデルカード | 未確認 |
-| clip-base | `openai/clip-vit-base-patch32` | Hugging FaceのモデルカードとOpenAIの公式実装 | 未確認 |
+| siglip-base | `google/siglip-base-patch16-224` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は保留 |
+| siglip2-base | `google/siglip2-base-patch16-224` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は保留 |
+| siglip-multilingual | `google/siglip-base-patch16-256-multilingual` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は保留 |
+| clip-japanese | `line-corporation/clip-japanese-base` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は除外 |
+| rinna-japanese | `rinna/japanese-clip-vit-b-16` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は除外 |
+| clip-base | `openai/clip-vit-base-patch32` | Hugging FaceのモデルカードとOpenAIの公式実装 | 配布ライセンス未確認のため除外 |
 
 候補の追加・除外は `tools/t0-3/candidates.csv` に記録する。候補を除外した場合でも、除外理由と確認URLを残す。
+
+### 今回のライセンス確認結果
+
+- GoogleのSigLIP、SigLIP2、多言語SigLIPのモデルカードはApache-2.0を示している。Transformers、SentencePiece、Optimum、ONNX RuntimeのライセンスURLも候補表へ記録した。ただし、実際のリビジョン、SHA-256、ONNX変換結果、Core ML EP動作は未確認であり、計測候補としての最終適格性は保留する。
+- `line-corporation/clip-japanese-base` と `rinna/japanese-clip-vit-b-16` はモデルカード上のApache-2.0は確認できたが、`trust_remote_code`または専用パッケージのコード・Tokenizer・ONNX変換物を、配布対象として個別確認できていないため計測前に除外する。
+- `openai/clip-vit-base-patch32` は、今回確認したモデルページからモデルウェイトの商用再配布条件を確定できなかったため計測前に除外する。
 
 ## 結果
 
 評価セットと候補のライセンス確認前。数値は推測で補完しない。
 
-| 候補 | 検索nDCG@10 | 類似Recall@10 | zero-shot macro F1 | custom macro F1 | Tokenizer一致 | p95 | メモリ | 状態 |
-|---|---:|---:|---:|---:|---|---:|---:|---|
-| siglip-base | 未計測 | 未計測 | 未計測 | 未計測 | 未確認 | 未計測 | 未計測 | 未確認 |
-| siglip2-base | 未計測 | 未計測 | 未計測 | 未計測 | 未確認 | 未計測 | 未計測 | 未確認 |
-| clip-base | 未計測 | 未計測 | 未計測 | 未計測 | 未確認 | 未計測 | 未計測 | 未確認 |
+| 候補 | 検索nDCG@10 | 類似Recall@10 | zero-shot mean AP | custom macro F1 | load p95 | inference p95 | モデル合計 | ピークメモリ | 状態 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 全候補 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 |
 
 ## 提案
 
@@ -91,3 +128,6 @@
 
 - 評価セット仕様: `docs/eval/README.md`
 - 候補登録表: `tools/t0-3/candidates.template.csv`
+- 候補ライセンス確認: `tools/t0-3/candidates.csv`
+- 生データ形式: `tools/t0-3/raw-results.template.csv`
+- 点数再計算: `tools/t0-3/score_results.py`
