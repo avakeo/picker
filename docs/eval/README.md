@@ -1,133 +1,117 @@
-# 評価セットの準備
+# T0-3 評価データとブラインド採点
 
-T0-3 の埋め込みモデル比較で使う、ローカル評価セットの書式を定義します。
-評価用の写真とラベルはリポジトリへ追加せず、ユーザーのMac上に置きます。Codexは、ユーザーから伝えられた `manifest.json` のパスを読み込んで計測します。
+T0-3は、候補モデルの検索結果をプーリングし、候補名を隠してユーザーが0/1/2で採点する。写真と採点結果は `/Users/runner/work/picker/eval-data/` に置き、Gitには追加しない。
 
-## ディレクトリ構成
+事前に全画像へ検索・タグの正解ラベルを付けない。事前ラベルを残すのはカスタムタグ3〜5個のtrain/testだけとする。
 
-以下のテンプレートをコピーして、同じディレクトリに置きます。
+## ディレクトリ
 
 ```text
-evaluation-set/
+eval-data/
 ├── manifest.json
 ├── images.csv
+├── images/
 ├── queries.csv
-├── relevance.csv
 ├── tags.csv
-└── custom-labels.csv
+├── similarity-queries.csv
+├── custom-labels.csv
+├── pool-rankings.csv        # 候補実行後。run_idは匿名ID
+├── candidate-map.csv        # run_idと候補名の対応。採点HTMLには埋め込まない
+├── blind-scoring.html       # 生成物
+├── blind-map.csv            # 採点IDと元項目の対応
+└── blind-scores.csv         # ブラウザから書き出す採点結果
 ```
 
-`templates/` に空のテンプレートがあります。
+テンプレートは `docs/eval/templates/` にある。`eval-data/` は `.gitignore` で除外する。
 
 ## manifest.json
 
-`manifest.json` は評価セットの入口です。`image_root` は画像が入っているローカルディレクトリの絶対パス、その他のファイルは `manifest.json` からの相対パスにします。
-
 ```json
 {
-  "schema_version": "0.1",
-  "image_root": "/Users/example/Pictures/picker-eval",
+  "schema_version": "0.2",
+  "image_root": "/Users/runner/work/picker/eval-data/images",
   "images": "images.csv",
   "queries": "queries.csv",
-  "relevance": "relevance.csv",
   "tags": "tags.csv",
+  "similarity_queries": "similarity-queries.csv",
   "custom_labels": "custom-labels.csv",
-  "unlisted_label": 0,
   "random_seed": 42
 }
 ```
 
-`image_root` の配下にある画像だけを使用します。評価セット外のファイルを参照するパスは書きません。
+## 固定する入力
 
-## CSV共通仕様
+### images.csv
 
-- UTF-8、1行目はヘッダー、区切り文字はカンマ
-- 文字列にカンマ・改行・ダブルクォートが含まれる場合はRFC 4180形式で引用する
-- `image_id`、`query_id`、`tag_id` は評価セット内で一意にする
-- `images.csv` の `path` は `image_root` からの相対パスにする
-- 画像ファイル名やラベルに個人情報が含まれる場合は、必要に応じて `notes` にも記録しない
-- 空欄は「未設定」、`0` は「該当しない」として扱う
+`image_id,path,notes`。写真は当初50枚、最終的に300〜500枚を想定する。`path` は `image_root` からの相対パスにする。
 
-## images.csv
+### queries.csv
 
-画像一覧です。50枚程度を目安に、実写画像を選びます。形式はHEIC、JPEG、PNG、WebPを混在させても構いません。
+`query_id,query_ja,query_en,notes`。日本語クエリを20件以上用意する。`query_en` は参考値の英語fallbackにだけ使い、主評価へ加点しない。
 
-| 列 | 必須 | 内容 |
-|---|---:|---|
-| `image_id` | ○ | 例：`img-0001` |
-| `path` | ○ | `image_root` からの相対パス |
-| `notes` |  | 撮影条件など、評価に必要な補足 |
+### tags.csv
 
-## queries.csv
+`tag_id,tag_ja,tag_en,category,notes`。設計書8.3の語彙ファイルを想定し、20〜30語を計測前に固定する。ゼロショット評価では候補ごとの上位20件をpoolし、採点結果からタグ別APとmean APを算出する。
 
-自然言語検索用の日本語クエリを10個程度用意します。モデル比較の前に文言を変更しないでください。
+### similarity-queries.csv
 
-| 列 | 必須 | 内容 |
-|---|---:|---|
-| `query_id` | ○ | 例：`q-0001` |
-| `query_ja` | ○ | 実際に入力する日本語クエリ |
-| `query_en` |  | 英語フォールバック比較用。不要なら空欄 |
-| `reviewed_all_images` | ○ | 全画像を確認済みなら `true` |
-| `notes` |  | クエリの意図 |
+`query_image_id,image_sha256,notes`。類似検索のクエリ画像を15枚程度、最低10枚固定する。`image_sha256` は画像バイト列のSHA-256で、検証スクリプトが実ファイルと照合する。
 
-`reviewed_all_images` が `true` でないクエリは、検索品質の正式な比較対象にしません。
+### custom-labels.csv
 
-## relevance.csv
+`tag_id,image_id,label,split,notes`。カスタムタグは3〜5個だけを対象にし、タグごとにtrain正例3枚以上、test正例・負例を用意する。train/testで同じ画像を使わない。
 
-クエリと画像の関連度です。全組み合わせを記録する必要はなく、記載のない組み合わせは `manifest.json` の `unlisted_label`（通常は0）として扱います。ただし、各クエリについて全画像を確認し、該当する画像を漏れなく記録してください。
+## 計測前の固定とハッシュ
 
-| 列 | 必須 | 内容 |
-|---|---:|---|
-| `query_id` | ○ | `queries.csv` のID |
-| `image_id` | ○ | `images.csv` のID |
-| `relevance` | ○ | `0` 非該当、`1` 該当、`2` 特に強く該当 |
-| `notes` |  | 判定理由 |
+`queries.csv`、`tags.csv`、`similarity-queries.csv` は、ユーザー確定後に個人情報やローカルパスを含まないことを確認してコミットする。類似クエリの画像本体はコミットせず、画像IDとSHA-256だけを固定する。
 
-同じ `query_id` と `image_id` の組み合わせは1行だけにします。各クエリには、可能なら関連度2を1枚以上、関連度1を2枚以上含めます。
+検証コマンドは各CSVと結合定義のSHA-256を出力する。ADR-001には結合定義ハッシュを記録する。
 
-## tags.csv
+```sh
+python3 tools/t0-3/validate_eval_set.py \
+  --manifest /Users/runner/work/picker/eval-data/manifest.json
+```
 
-ゼロショット自動タグ用の小さなタグ語彙です。まずは検索クエリと重複しない実写向けのタグを10〜20個程度用意します。
+最低件数は、クエリ20、タグ20、類似クエリ画像10、カスタムタグ3。件数、画像ハッシュ、参照ID、train/test分離のどれかが不正なら計測を開始しない。
 
-| 列 | 必須 | 内容 |
-|---|---:|---|
-| `tag_id` | ○ | 例：`tag-0001` |
-| `tag_ja` | ○ | 日本語タグ |
-| `tag_en` |  | 英語タグまたは英語プロンプト用語 |
-| `category` |  | 例：`scene`、`object`、`activity` |
-| `reviewed_all_images` | ○ | 全画像を確認済みなら `true` |
-| `notes` |  | タグの境界や注意点 |
+## プーリング
 
-## custom-labels.csv
+候補ごとの順位は `pool-rankings.csv` に次の形式で保存する。
 
-カスタムタグの簡易分類器を比較するための正例・負例です。タグごとに `train` と `test` の画像を分離します。テスト画像は学習側に含めません。
+```csv
+task,prompt_id,run_id,rank,image_id
+natural_language,q-0001,R001,1,img-0001
+zero_shot,tag-0001,R001,1,img-0002
+similarity,img-0003,R001,1,img-0004
+```
 
-| 列 | 必須 | 内容 |
-|---|---:|---|
-| `tag_id` | ○ | `tags.csv` のID |
-| `image_id` | ○ | `images.csv` のID |
-| `label` | ○ | `1` 正例、`0` 負例 |
-| `split` | ○ | `train` または `test` |
-| `notes` |  | 判定理由 |
+- 自然言語検索: 各候補の上位20件を合併
+- ゼロショットタグ: タグごとに各候補の上位20件を合併
+- 類似画像検索: クエリ画像ごとに各候補の上位10件を合併
+- `run_id` は `R001` のような匿名IDにし、モデル名を含めない
+- モデル名との対応は `candidate-map.csv` にだけ保存する
 
-各カスタムタグについて、少なくとも学習側に正例3枚以上、テスト側に正例と負例を用意します。`train` と `test` の画像IDは重複させません。
+ユーザーがクエリ・タグ・類似クエリ画像を固定する前に、写真に対する順位を生成・閲覧・保存しない。
 
-T0-3でカスタムタグの評価対象にするタグは、まず3〜5個に絞ります。タグごとに学習・テストの画像を分離し、タグ数を増やす場合も、計測前に固定してから再計測します。
+## ブラインド採点HTML
 
-## 英語fallbackの扱い
+```sh
+python3 tools/t0-3/build_blind_scoring.py \
+  --eval-root /Users/runner/work/picker/eval-data
+```
 
-`query_en` は参考値の別集計にだけ使います。日本語の `query_ja` による検索結果を主評価とし、英語fallbackの結果は主評価の点数へ加えません。
+生成物は `eval-data/blind-scoring.html` と `eval-data/blind-map.csv` のみ。HTMLは外部通信・CDNを使わず、候補名とrun IDを埋め込まない。画面とHTMLソース、書き出しファイル名から候補を推測できないようにする。
 
-## 生の計測値
+ブラウザでHTMLを開き、キーボードの0/1/2で採点する。採点はlocalStorageへ自動保存され、再度開くと続きから再開できる。「CSVを書き出す」で `blind-scores.csv` を保存する。
 
-候補ごとの計測値は、点数化した値とは別に `tools/t0-3/raw-results.csv` として保存します。モデルサイズ、ロード時間、推論時間、ピークメモリ、検索・タグ指標、英語fallbackの参考値を記録します。重みや仮上限を変更した場合は、生データを変更せずに再計算します。
+採点項目の約10%は、同一項目を別の位置へ重複して出題する。重複で同じ点を付けた割合を自己一致率として記録する。
 
-## 準備後の確認
+## 指標
 
-ユーザーが記入を終えたら、以下をCodexに伝えます。
+- 自然言語検索: 未採点を0としてnDCG@10
+- ゼロショットタグ: 1または2を関連ありとしてAP、タグ単位の平均をmean AP
+- 類似画像検索: pool内で1または2の画像を関連ありとしてRecall@10、0/1/2を使ってnDCG@10
+- カスタムタグ: 固定train/testのmacro F1
+- 候補差: クエリ・タグ・類似クエリ画像単位のブートストラップ95%信頼区間。0をまたぐ場合は有意差なしと記録
 
-1. `manifest.json` の絶対パス
-2. 評価セットを全画像について確認したこと
-3. 個人写真をリポジトリへ追加していないこと
-
-Codexは、読み込み検証で不足列、重複ID、存在しない画像、未確認クエリ、学習・テスト間の重複を検出します。検証に失敗した場合、T0-3の正式な計測は開始しません。
+点数化前の候補別・クエリ別指標、信頼区間、自己一致率を生データとして保存する。重みや仮上限は後から再計算できるよう、生データへ埋め込まない。

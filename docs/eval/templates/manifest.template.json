@@ -3,9 +3,8 @@
   "image_root": "/absolute/path/to/evaluation-images",
   "images": "images.csv",
   "queries": "queries.csv",
-  "relevance": "relevance.csv",
   "tags": "tags.csv",
+  "similarity_queries": "similarity-queries.csv",
   "custom_labels": "custom-labels.csv",
-  "unlisted_label": 0,
   "random_seed": 42
 }
