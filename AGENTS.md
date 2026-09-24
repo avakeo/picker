@@ -89,11 +89,47 @@ Eagle のようなローカル画像管理デスクトップアプリ。ユー�
 
 ## コマンド
 
-T0-1 と T0-2 の完了後に、次の項目の実行方法をここに追記すること。
+### 開発用の起動
 
-- 開発用の起動
-- Rust のビルド・テスト・フォーマット・静的解析
-- フロントエンドの型チェック・lint・テスト
-- TypeScript の型生成と、その検査
-- 時間のかかるテストの実行
-- 依存の脆弱性・ライセンス検査
+```sh
+npm install
+npm run tauri dev
+```
+
+フロントエンド単体で確認する場合は `npm run dev` を使う。
+
+### Rust
+
+```sh
+cargo fmt --all --check
+cargo check --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-targets --all-features
+```
+
+### フロントエンド
+
+```sh
+npm ci
+npm run check
+npm run lint
+npm run build
+```
+
+フロントエンドの単体テスト基盤はまだ導入していない。導入後はこの節と CI に追加する。
+
+### TypeScript 型生成
+
+Rust 型から TypeScript 型を生成する仕組みは T0-8 で導入予定であり、現時点で実行コマンドはない。T0-8 完了時にこの節と CI を更新する。
+
+### 時間のかかるテスト
+
+現時点ではモデル推論や大量画像を使う時間のかかるテストはない。導入時は通常のテストと分離し、明示的なコマンドとして追加する。
+
+### 依存の脆弱性・ライセンス検査
+
+```sh
+cargo deny check advisories licenses bans sources
+```
+
+`deny.toml` に許可ライセンス、依存ソース、複数バージョンの扱いを定義している。

@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Check compilation
+        run: cargo check --workspace --all-targets --all-features
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --workspace --all-targets --all-features
+
+  dependencies:
+    name: Rust dependencies
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check advisories, licenses, bans, and sources
+        uses: EmbarkStudios/cargo-deny-action@v2
+
+  frontend:
+    name: Frontend
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check Svelte and TypeScript
+        run: npm run check
+
+      - name: Run frontend lint
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+
+  ci:
+    name: ci
+    if: ${{ always() }}
+    needs:
+      - rust
+      - dependencies
+      - frontend
+    runs-on: macos-latest
+    steps:
+      - name: Require all checks to pass
+        env:
+          RUST_RESULT: ${{ needs.rust.result }}
+          DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+        run: |
+          if [[ "$RUST_RESULT" != "success" || "$DEPENDENCIES_RESULT" != "success" || "$FRONTEND_RESULT" != "success" ]]; then
+            echo "At least one required CI job did not succeed."
+            echo "rust=$RUST_RESULT dependencies=$DEPENDENCIES_RESULT frontend=$FRONTEND_RESULT"
+            exit 1
+          fi
