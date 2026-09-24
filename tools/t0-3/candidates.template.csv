@@ -1,0 +1,1 @@
+candidate_id,model_id,revision,weights_url,weights_sha256,model_license,model_license_url,code_license,code_license_url,tokenizer_license,tokenizer_license_url,conversion_license,conversion_license_url,commercial_use,redistribution,onnx_export,coreml_ep,status,exclusion_reason
