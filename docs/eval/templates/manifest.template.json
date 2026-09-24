@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "image_root": "/absolute/path/to/evaluation-images",
+  "images": "images.csv",
+  "queries": "queries.csv",
+  "relevance": "relevance.csv",
+  "tags": "tags.csv",
+  "custom_labels": "custom-labels.csv",
+  "unlisted_label": 0,
+  "random_seed": 42
+}
