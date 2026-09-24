@@ -1,0 +1,15 @@
+[package]
+name = "picker-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Application-independent domain and use-case layer for Picker"
+
+[dependencies]
+picker-fswatch = { path = "../fswatch" }
+picker-imaging = { path = "../imaging" }
+picker-indexer = { path = "../indexer" }
+picker-learn = { path = "../learn" }
+picker-ml = { path = "../ml" }
+picker-sidecar = { path = "../sidecar" }
+picker-store = { path = "../store" }

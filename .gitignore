@@ -1,0 +1,12 @@
+# Rust
+/target/
+
+# Frontend
+/node_modules/
+/dist/
+
+# Tauri generated files
+/src-tauri/gen/
+
+# macOS
+.DS_Store

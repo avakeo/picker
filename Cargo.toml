@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "src-tauri",
+    "crates/core",
+    "crates/store",
+    "crates/indexer",
+    "crates/fswatch",
+    "crates/imaging",
+    "crates/ml",
+    "crates/learn",
+    "crates/sidecar",
+]
+resolver = "2"
