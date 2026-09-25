@@ -1,10 +1,13 @@
-<script lang="ts">
-  import { onMount } from "svelte";
-
+<script lang="ts" context="module">
   export interface GridItem {
     assetId: string;
     label: string;
   }
+</script>
+
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { visibleRange } from "./gridMath";
 
   export let items: GridItem[] = [];
   export let tileWidth = 176;
@@ -18,15 +21,11 @@
   let viewportHeight = 600;
   let scrollTop = 0;
 
-  $: columns = Math.max(1, Math.floor(viewportWidth / tileWidth));
-  $: rowCount = Math.ceil(items.length / columns);
-  $: firstRow = Math.max(0, Math.floor(scrollTop / tileHeight) - overscanRows);
-  $: lastRow = Math.min(
-    rowCount,
-    Math.ceil((scrollTop + viewportHeight) / tileHeight) + overscanRows
-  );
-  $: visibleStart = firstRow * columns;
-  $: visibleEnd = Math.min(items.length, lastRow * columns);
+  $: range = visibleRange(items.length, viewportWidth, viewportHeight, scrollTop, tileWidth, tileHeight, overscanRows);
+  $: columns = range.columns;
+  $: rowCount = range.rowCount;
+  $: visibleStart = range.start;
+  $: visibleEnd = range.end;
   $: visibleItems = items.slice(visibleStart, visibleEnd);
 
   function measureViewport() {
@@ -43,7 +42,7 @@
   }
 
   function thumbnailUrl(assetId: string) {
-    return `asset://thumbnail/${encodeURIComponent(assetId)}?size=medium`;
+    return `asset://localhost/thumbnail/${encodeURIComponent(assetId)}?size=grid`;
   }
 
   onMount(() => {
@@ -55,7 +54,7 @@
   });
 </script>
 
-<div class="virtual-grid" bind:this={viewport} on:scroll={handleScroll}>
+<div class="virtual-grid" bind:this={viewport} onscroll={handleScroll}>
   <div class="grid-spacer" style={`height: ${rowCount * tileHeight}px`}>
     {#each visibleItems as item, index (item.assetId)}
       {@const absoluteIndex = visibleStart + index}

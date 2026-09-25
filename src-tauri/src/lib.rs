@@ -2,9 +2,14 @@
 
 //! Tauri application bootstrap library.
 
+mod thumbnail_protocol;
+
 /// Starts the Tauri desktop application.
 pub fn run() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("asset", |_context, request| {
+            thumbnail_protocol::handle(request)
+        })
         .setup(|_app| {
             let _core = create_core();
             Ok(())
