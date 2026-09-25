@@ -5,6 +5,7 @@ use std::{error::Error, fmt};
 pub enum StoreError {
     Sqlite(rusqlite::Error),
     InvalidInput { field: &'static str, reason: String },
+    RootOverlap { requested: String, existing: String },
     CorruptData { field: &'static str, value: String },
     MigrationModified { version: u32, name: &'static str },
     UnknownMigration(u32),
@@ -16,6 +17,15 @@ impl fmt::Display for StoreError {
         match self {
             Self::Sqlite(error) => write!(formatter, "SQLite error: {error}"),
             Self::InvalidInput { field, reason } => write!(formatter, "invalid {field}: {reason}"),
+            Self::RootOverlap {
+                requested,
+                existing,
+            } => {
+                write!(
+                    formatter,
+                    "root overlaps an existing root: {requested} / {existing}"
+                )
+            }
             Self::CorruptData { field, value } => {
                 write!(formatter, "database contains invalid {field}: {value}")
             }

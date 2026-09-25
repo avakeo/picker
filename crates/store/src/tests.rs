@@ -163,6 +163,34 @@ fn database_constraints_reject_duplicates_invalid_targets_and_foreign_keys() -> 
 }
 
 #[test]
+fn root_registration_rejects_parent_child_overlap_and_toggles_enabled() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let first = store.roots().register(&root("/library/photos", "Photos"))?;
+
+    assert!(matches!(
+        store
+            .roots()
+            .register(&root("/library/photos/2026", "Nested")),
+        Err(StoreError::RootOverlap { .. })
+    ));
+    assert!(matches!(
+        store
+            .roots()
+            .register(&root("/library/photos-old", "Not nested")),
+        Ok(_)
+    ));
+
+    let disabled = store.roots().set_enabled(first.id, false)?;
+    assert!(!disabled.enabled);
+    assert!(store.roots().set_enabled(first.id, true)?.enabled);
+    assert!(matches!(
+        store.roots().set_enabled(99_999, true),
+        Err(StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows))
+    ));
+    Ok(())
+}
+
+#[test]
 fn invalid_external_inputs_return_typed_errors_without_panicking() -> Result<()> {
     let store = Store::open_in_memory()?;
     assert!(matches!(
