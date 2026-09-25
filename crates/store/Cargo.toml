@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "Persistence boundary for Picker"
+
+[dependencies]
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3.23.0"
