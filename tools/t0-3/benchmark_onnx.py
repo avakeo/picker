@@ -34,14 +34,17 @@ def provider_spec(name: str):
 
 
 def worker(args: argparse.Namespace) -> int:
+    # Remote-code image processors need a writable module cache even when the
+    # model source itself is local. Keep it with the gitignored evaluation data.
+    os.environ.setdefault("HF_MODULES_CACHE", str(args.hf_modules_cache.resolve()))
     import numpy as np
     import onnxruntime as ort
     from PIL import Image
     from pillow_heif import register_heif_opener
-    from transformers import AutoProcessor
+    from transformers import AutoImageProcessor
 
     register_heif_opener()
-    processor = AutoProcessor.from_pretrained(args.source, use_fast=False)
+    processor = AutoImageProcessor.from_pretrained(args.source, trust_remote_code=True, use_fast=False)
     with args.images_csv.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     arrays = []
@@ -53,11 +56,11 @@ def worker(args: argparse.Namespace) -> int:
     session = ort.InferenceSession(str(args.image_model), providers=provider_spec(args.provider))
     load_ms = (time.perf_counter_ns() - started) / 1_000_000
     for _ in range(args.warmup):
-        session.run(None, {"pixel_values": arrays[0]})
+        session.run(None, {args.image_input_name: arrays[0]})
     inference_ms = []
     for array in arrays:
         started = time.perf_counter_ns()
-        output = session.run(None, {"pixel_values": array})[0]
+        output = session.run(None, {args.image_input_name: array})[0]
         inference_ms.append((time.perf_counter_ns() - started) / 1_000_000)
         del output
     print(json.dumps({
@@ -79,6 +82,8 @@ def coordinator(args: argparse.Namespace) -> int:
             "--source", str(args.source), "--image-model", str(args.image_model),
             "--images-csv", str(args.images_csv), "--image-root", str(args.image_root),
             "--provider", args.provider, "--warmup", str(args.warmup),
+            "--image-input-name", args.image_input_name,
+            "--hf-modules-cache", str(args.hf_modules_cache),
         ]
         completed = subprocess.run(command, check=True, capture_output=True, text=True, env=os.environ)
         runs.append(json.loads(completed.stdout.strip().splitlines()[-1]))
@@ -121,6 +126,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--images-csv", type=Path, required=True)
     parser.add_argument("--image-root", type=Path, required=True)
     parser.add_argument("--provider", choices=("cpu", "coreml"), required=True)
+    parser.add_argument("--image-input-name", default="pixel_values")
+    parser.add_argument("--hf-modules-cache", type=Path, default=Path("eval-data/hf-modules-cache"))
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--load-repetitions", type=int, default=5)
     parser.add_argument("--model-files", type=Path, nargs="*", default=[])

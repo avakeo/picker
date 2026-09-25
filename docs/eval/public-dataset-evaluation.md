@@ -15,4 +15,4 @@ STAIR Captionsの日本語キャプションをクエリ、対応するCOCO画�
 - https://github.com/STAIR-Lab-CIT/STAIR-captions
 - https://cocodataset.org/
 
-COCO画像の利用条件確認と大容量ダウンロードを伴うため、今回は手順提案までとし、ユーザー承認なしに補助データを取得しない。
+STAIR Captions注釈のライセンスは確認できたが、COCO画像は画像ごとに権利条件が異なり、評価セット全体の再利用条件を一括確認できなかった。このため今回はダウンロードせず手順提案までとする。

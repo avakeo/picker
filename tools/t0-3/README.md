@@ -44,3 +44,7 @@ python3 tools/t0-3/analyze_blind_scores.py \
 - Python参照実装とONNX/Rust実装の比較対象・Tokenizerを固定している
 
 足切り・性能計測後もADRの状態を「提案」のままにし、採用・却下の判断は行いません。未取得の数値を推測で補完しません。
+
+再現可能な変換、埋め込み一致、Rust Tokenizer一致、順位を保存しない性能計測の詳細は `docs/eval/measurement-procedure.md` に記録しています。
+
+実測の集計値は `raw-results.csv` にあり、品質指標の空欄はユーザーが入力を固定してブラインド採点を完了するまで埋めません。Core ML行はCPU fallbackを含みます。

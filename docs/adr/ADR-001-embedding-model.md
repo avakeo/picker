@@ -121,32 +121,46 @@ normalized = 100 * (max(value) - value) / (max(value) - min(value))
 
 | 候補ID | モデルID | 公式参照先 | ライセンス状態 |
 |---|---|---|---|
-| siglip-base | `google/siglip-base-patch16-224` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は保留 |
-| siglip2-base | `google/siglip2-base-patch16-224` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は保留 |
-| siglip-multilingual | `google/siglip-base-patch16-256-multilingual` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は保留 |
-| clip-japanese | `line-corporation/clip-japanese-base` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は除外 |
-| rinna-japanese | `rinna/japanese-clip-vit-b-16` | Hugging Faceのモデルカード | モデルはApache-2.0確認、実行経路は除外 |
+| siglip-base | `google/siglip-base-patch16-224` | Hugging Faceのモデルカード | ライセンス・実行経路確認済み、品質評価待ち |
+| siglip2-base | `google/siglip2-base-patch16-224` | Hugging Faceのモデルカード | ライセンス・実行経路確認済み、サイズ上限超過 |
+| siglip-multilingual | `google/siglip-base-patch16-256-multilingual` | Hugging Faceのモデルカード | ライセンス・実行経路確認済み、サイズ上限超過 |
+| clip-japanese | `line-corporation/clip-japanese-base` | Hugging Faceのモデルカード | ライセンス・実行経路確認済み、品質評価待ち |
+| rinna-japanese | `rinna/japanese-clip-vit-b-16` | Hugging Faceのモデルカード | 専用実行ソースを固定できず除外 |
 | clip-base | `openai/clip-vit-base-patch32` | Hugging FaceのモデルカードとOpenAIの公式実装 | 配布ライセンス未確認のため除外 |
 
 候補の追加・除外は `tools/t0-3/candidates.csv` に記録する。候補を除外した場合でも、除外理由と確認URLを残す。
 
 ### 今回のライセンス確認結果
 
-- GoogleのSigLIP、SigLIP2、多言語SigLIPのモデルカードはApache-2.0を示している。Transformers、SentencePiece、Optimum、ONNX RuntimeのライセンスURLも候補表へ記録した。ただし、実際のリビジョン、SHA-256、ONNX変換結果、Core ML EP動作は未確認であり、計測候補としての最終適格性は保留する。
-- `line-corporation/clip-japanese-base` と `rinna/japanese-clip-vit-b-16` はモデルカード上のApache-2.0は確認できたが、`trust_remote_code`または専用パッケージのコード・Tokenizer・ONNX変換物を、配布対象として個別確認できていないため計測前に除外する。
+- GoogleのSigLIP、SigLIP2、多言語SigLIPは、モデル、Transformers、Tokenizers/SentencePiece、Optimum/ONNX、ONNX Runtimeについて配布・実行経路のライセンスを確認し、リビジョン、ウェイトSHA-256、確認URLを候補表へ固定した。
+- `line-corporation/clip-japanese-base` は再確認の結果、リポジトリ全体のApache-2.0 LICENSEがカスタムコードと提供ONNXを覆い、Tokenizer実装はApache-2.0、その依存元 `rinna/japanese-roberta-base` はMITと確認できたため候補へ戻した。
+- `rinna/japanese-clip-vit-b-16` はモデルカードのApache-2.0とTokenizer依存元のMITまでは確認できた。しかし、モデルカードが参照する専用 `japanese-clip` ソースが取得不能で、モデルリポジトリにもTokenizer実装がないため、再現可能で保守可能な実行経路を固定できず除外した。
 - `openai/clip-vit-base-patch32` は、今回確認したモデルページからモデルウェイトの商用再配布条件を確定できなかったため計測前に除外する。
+
+詳細なURL、固定リビジョン、SHA-256、除外理由は `tools/t0-3/candidates.csv` を正とする。
 
 ## 結果
 
-評価入力の固定と品質採点前。数値は推測で補完しない。
+評価入力の固定と品質採点前。以下はf16、batch 1、ウォームアップ5回後、50画像×5独立プロセスの実測値であり、数値は推測で補完していない。モデル合計は画像・テキストONNXとTokenizer配布物の合計、メモリは最大RSSである。全タイミングと集計前の値はgit管理外の `eval-data/raw-results/`、再計算に使う集計値は `tools/t0-3/raw-results.csv` に記録した。
 
-| 候補 | 検索nDCG@10 | 類似Recall@10 | zero-shot mean AP | custom macro F1 | load p95 | inference p95 | モデル合計 | ピークメモリ | 状態 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| 全候補 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 | 未計測 |
+| 候補 | EP | cosine最低値 | token ID | load p95 | inference p50 / p95 | モデル合計 | ピークメモリ | 足切り状態 |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| siglip-base | CPU | 0.9999973 | 一致 | 116.4 ms | 64.5 / 66.4 ms | 409.3 MB | 1.218 GB | 通過、品質評価待ち |
+| siglip-base | Core ML + CPU | 0.9999974 | 一致 | 659.8 ms | 73.1 / 74.6 ms | 409.3 MB | 1.231 GB | 通過、品質評価待ち |
+| siglip2-base | CPU | 0.9999896 | 一致 | 114.3 ms | 67.3 / 70.2 ms | 785.4 MB | 1.283 GB | 600 MB上限超過 |
+| siglip2-base | Core ML + CPU | 0.9999898 | 一致 | 654.8 ms | 94.4 / 99.1 ms | 785.4 MB | 1.297 GB | 600 MB上限超過 |
+| siglip-multilingual | CPU | 0.9999921 | 一致 | 115.5 ms | 100.0 / 121.3 ms | 758.2 MB | 1.277 GB | 600 MB上限超過 |
+| siglip-multilingual | Core ML + CPU | 0.9999921 | 一致 | 658.4 ms | 125.0 / 140.4 ms | 758.2 MB | 1.302 GB | 600 MB上限超過 |
+| clip-japanese | CPU | 0.9999982 | 一致 | 209.3 ms | 98.0 / 104.7 ms | 398.7 MB | 1.016 GB | 通過、品質評価待ち |
+| clip-japanese | Core ML + CPU | 0.9999982 | 一致 | 818.5 ms | 109.5 / 121.6 ms | 398.7 MB | 1.026 GB | 通過、品質評価待ち |
+
+Core ML EPのセッションにはCPU EPもfallbackとして登録され、一部ノードだけがCore MLへ分割された。したがって、この表は「Core MLのみ」の速度ではない。今回のモデルではCPU単独の方が速く、Core ML利用を性能上の優位とは扱わない。`siglip-base` と `clip-japanese` のfp32画像経路はCore ML実行時に失敗したが、配布候補のf16経路はCPU/Core MLの双方でcosine 0.999以上を満たした。
+
+検索nDCG@10、類似Recall@10、zero-shot mean AP、custom macro F1、英語fallback、自己一致率、ブートストラップ95%信頼区間は未計測である。ユーザーが入力を固定するまでランキングを生成していない。
 
 ## 提案
 
-評価セット、ライセンス確認、実測結果を人間がレビューした後に記入する。採用の決定はCodexが行わない。
+仮上限による足切りでは `siglip-base` と `clip-japanese` を品質評価対象として残す。ただし、これは採用提案ではなく、品質比較へ進める候補の絞り込みである。ユーザーが評価入力を固定し、ブラインド採点結果を人間がレビューするまで採用候補は記入しない。採用の決定はCodexが行わない。
 
 ## 参照情報
 
@@ -154,4 +168,5 @@ normalized = 100 * (max(value) - value) / (max(value) - min(value))
 - 候補登録表: `tools/t0-3/candidates.template.csv`
 - 候補ライセンス確認: `tools/t0-3/candidates.csv`
 - 生データ形式: `tools/t0-3/raw-results.template.csv`
+- 足切り・性能の集計値: `tools/t0-3/raw-results.csv`
 - 点数再計算: `tools/t0-3/score_results.py`
