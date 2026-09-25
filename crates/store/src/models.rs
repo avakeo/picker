@@ -51,6 +51,21 @@ string_enum!(Stage {
     AutoTag => "auto_tag",
     CustomSuggest => "custom_suggest",
 });
+
+impl Stage {
+    #[must_use]
+    pub const fn ordered() -> &'static [Self] {
+        &[
+            Self::Hash,
+            Self::Metadata,
+            Self::Thumbnail,
+            Self::PerceptualHash,
+            Self::Embedding,
+            Self::AutoTag,
+            Self::CustomSuggest,
+        ]
+    }
+}
 string_enum!(StageStatus {
     Pending => "pending",
     Running => "running",
