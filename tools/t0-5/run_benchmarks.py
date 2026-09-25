@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Run all T0-5 cases. Large generated vectors and SQLite files remain temporary."""
+import argparse,csv,resource,sqlite3,subprocess,tempfile,time
+from pathlib import Path
+import numpy as np
+FIELDS=["method","dimensions","count","precision","p50_ms","p95_ms","load_ms","storage_bytes","peak_rss_bytes","top10_recall_vs_f32","insert_ms","update_ms","delete_ms","restart_ms","status"]
+def pct(v,p):return float(np.percentile(np.asarray(v),p,method="nearest"))
+def rss():return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+def read_top(p):return [[int(x)for x in line.split(",",1)[1].split(";")]for line in Path(p).read_text().splitlines()]
+def recall(a,e):return sum(len(set(x)&set(y))/len(y)for x,y in zip(a,e))/len(e)
+def normalized(rng,n,d):
+ x=rng.standard_normal((n,d),dtype=np.float32);x/=np.linalg.norm(x,axis=1,keepdims=True);return x
+def rust(binary,vectors,queries,d,n,precision,warmups,k,tmp):
+ out=tmp/f"rust-{precision}.csv";tops=tmp/f"rust-{precision}.top";subprocess.run([str(binary),"--input",str(vectors),"--queries",str(queries),"--output",str(out),"--top-output",str(tops),"--dimensions",str(d),"--count",str(n),"--query-count","20","--warmups",str(warmups),"--top-k",str(k),"--precision",precision],check=True)
+ with out.open()as f:row=next(csv.DictReader(f))
+ return row,read_top(tops)
+def connect(path):
+ import sqlite_vec
+ db=sqlite3.connect(path);db.enable_load_extension(True);sqlite_vec.load(db);db.enable_load_extension(False);return db
+def sqlite_case(base,queries,d,n,precision,warmups,k,tmp):
+ data=base if precision=="f32"else base.astype(np.float16).astype(np.float32);qs=queries if precision=="f32"else queries.astype(np.float16).astype(np.float32);path=tmp/f"sqlite-{precision}.db";db=connect(path);db.execute(f"CREATE VIRTUAL TABLE items USING vec0(embedding float[{d}])")
+ s=time.perf_counter()
+ with db:
+  for start in range(0,n,500):db.executemany("INSERT INTO items(rowid,embedding) VALUES (?,?)",((i+1,memoryview(data[i]))for i in range(start,min(start+500,n))))
+ insert=(time.perf_counter()-s)*1000;sample=min(100,n);s=time.perf_counter()
+ with db:db.executemany("UPDATE items SET embedding=? WHERE rowid=?",((memoryview(data[i]),i+1)for i in range(sample)))
+ update=(time.perf_counter()-s)*1000;s=time.perf_counter()
+ with db:
+  db.executemany("DELETE FROM items WHERE rowid=?",((i+1,)for i in range(sample)));db.executemany("INSERT INTO items(rowid,embedding) VALUES (?,?)",((i+1,memoryview(data[i]))for i in range(sample)))
+ delete=(time.perf_counter()-s)*1000;db.execute("PRAGMA wal_checkpoint(TRUNCATE)");db.close();s=time.perf_counter();db=connect(path);db.execute("SELECT count(*) FROM items").fetchone();restart=(time.perf_counter()-s)*1000;sql="SELECT rowid FROM items WHERE embedding MATCH ? AND k = ? ORDER BY distance"
+ for i in range(warmups):db.execute(sql,(memoryview(qs[i%len(qs)]),k)).fetchall()
+ times=[];tops=[]
+ for q in qs:
+  s=time.perf_counter();rows=db.execute(sql,(memoryview(q),k)).fetchall();times.append((time.perf_counter()-s)*1000);tops.append([r[0]-1 for r in rows])
+ db.close();return{"method":"sqlite-vec","dimensions":d,"count":n,"precision":"f32"if precision=="f32"else"f16-expanded-f32","p50_ms":f"{pct(times,50):.3f}","p95_ms":f"{pct(times,95):.3f}","load_ms":f"{restart:.3f}","storage_bytes":path.stat().st_size,"peak_rss_bytes":rss(),"insert_ms":f"{insert:.3f}","update_ms":f"{update:.3f}","delete_ms":f"{delete:.3f}","restart_ms":f"{restart:.3f}","status":"measured"},tops
+def main():
+ p=argparse.ArgumentParser();p.add_argument("--output",required=True);p.add_argument("--dimensions",default="512,768,1152");p.add_argument("--sizes",default="10000,50000,100000");p.add_argument("--warmups",type=int,default=3);p.add_argument("--top-k",type=int,default=10);p.add_argument("--binary",required=True);a=p.parse_args();rows=[]
+ with tempfile.TemporaryDirectory(prefix="picker-t0-5-")as td:
+  tmp=Path(td)
+  for d in map(int,a.dimensions.split(",")):
+   for n in map(int,a.sizes.split(",")):
+    print(f"case dimensions={d} count={n}",flush=True);rng=np.random.default_rng(0x5049434B4552^d^n);base=normalized(rng,n,d);queries=normalized(rng,20,d);vf=tmp/"vectors.bin";qf=tmp/"queries.bin";base.tofile(vf);queries.tofile(qf)
+    f32,btop=rust(Path(a.binary),vf,qf,d,n,"f32",a.warmups,a.top_k,tmp);f32["top10_recall_vs_f32"]="1.0000";rows.append(f32);f16,htop=rust(Path(a.binary),vf,qf,d,n,"f16",a.warmups,a.top_k,tmp);f16["top10_recall_vs_f32"]=f"{recall(htop,btop):.4f}";rows.append(f16)
+    s32,stop=sqlite_case(base,queries,d,n,"f32",a.warmups,a.top_k,tmp);s32["top10_recall_vs_f32"]=f"{recall(stop,btop):.4f}";rows.append(s32);s16,shtop=sqlite_case(base,queries,d,n,"f16",a.warmups,a.top_k,tmp);s16["top10_recall_vs_f32"]=f"{recall(shtop,btop):.4f}";rows.append(s16);rows.append({"method":"sqlite-vec","dimensions":d,"count":n,"precision":"f16-native","status":"unsupported-by-sqlite-vec-0.1.9"})
+    for x in tmp.iterdir():
+     if x.is_file():x.unlink()
+ with open(a.output,"w",newline="")as f:w=csv.DictWriter(f,fieldnames=FIELDS,extrasaction="ignore");w.writeheader();w.writerows(rows)
+ print(f"wrote {a.output}")
+if __name__=="__main__":main()
