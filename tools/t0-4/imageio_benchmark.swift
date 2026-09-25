@@ -1,6 +1,9 @@
 import CoreGraphics
+import CoreImage
 import Foundation
 import ImageIO
+
+let orientationContext = CIContext(options: [.useSoftwareRenderer: true])
 
 struct Arguments {
     let inputRoot: URL
@@ -8,6 +11,7 @@ struct Arguments {
     let iterations: Int
     let warmups: Int
     let maxPixel: Int
+    let mode: String?
 }
 
 struct Observation: Codable {
@@ -20,6 +24,10 @@ struct Observation: Codable {
     let width: Int?
     let height: Int?
     let colorSpace: String?
+    let orientation: Int?
+    let orientationCorrect: Bool?
+    let srgbCorrect: Bool?
+    let sourceType: String?
     let error: String?
 }
 
@@ -31,6 +39,7 @@ struct Report: Codable {
     let maxPixel: Int
     let iterations: Int
     let warmups: Int
+    let mode: String?
     let observations: [Observation]
 }
 
@@ -62,8 +71,11 @@ func parseArguments() throws -> Arguments {
     let iterations = Int((try? argumentValue("--iterations", in: arguments)) ?? "5") ?? 5
     let warmups = Int((try? argumentValue("--warmups", in: arguments)) ?? "2") ?? 2
     let maxPixel = Int((try? argumentValue("--max-pixel", in: arguments)) ?? "512") ?? 512
+    let mode = try? argumentValue("--mode", in: arguments)
+    let validModes = ["full-decode-scale", "imageio-thumbnail", "embedded-preferred"]
 
-    guard iterations > 0, warmups >= 0, maxPixel > 0 else {
+    guard iterations > 0, warmups >= 0, maxPixel > 0,
+          mode == nil || validModes.contains(mode!) else {
         throw BenchmarkError.invalidValue("iterations, warmups, and max-pixel must be positive")
     }
 
@@ -72,7 +84,8 @@ func parseArguments() throws -> Arguments {
         output: output,
         iterations: iterations,
         warmups: warmups,
-        maxPixel: maxPixel
+        maxPixel: maxPixel,
+        mode: mode
     )
 }
 
@@ -152,16 +165,29 @@ func scaledImage(_ image: CGImage, maxPixel: Int) -> CGImage? {
     return context.makeImage()
 }
 
-func decode(_ url: URL, mode: String, maxPixel: Int) -> CGImage? {
+func sourceOrientation(_ source: CGImageSource) -> Int {
+    guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+          let orientation = properties[kCGImagePropertyOrientation] as? NSNumber else {
+        return 1
+    }
+    return orientation.intValue
+}
+
+func orient(_ image: CGImage, orientation: Int) -> CGImage? {
+    guard orientation != 1 else { return image }
+    let oriented = CIImage(cgImage: image).oriented(forExifOrientation: Int32(orientation))
+    return orientationContext.createCGImage(oriented, from: oriented.extent)
+}
+
+func decode(_ url: URL, mode: String, maxPixel: Int) -> (CGImage, Int, String?)? {
     guard let imageSource = source(for: url) else { return nil }
+    let orientation = sourceOrientation(imageSource)
+    let sourceType = CGImageSourceGetType(imageSource) as String?
 
     let image: CGImage?
     switch mode {
     case "full-decode-scale":
-        image = CGImageSourceCreateImageAtIndex(imageSource, 0, [
-            kCGImageSourceShouldCache: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-        ] as CFDictionary)
+        image = CGImageSourceCreateImageAtIndex(imageSource, 0, [kCGImageSourceShouldCache: true] as CFDictionary)
     case "imageio-thumbnail":
         image = CGImageSourceCreateThumbnailAtIndex(
             imageSource,
@@ -184,9 +210,12 @@ func decode(_ url: URL, mode: String, maxPixel: Int) -> CGImage? {
     }
 
     guard let image else { return nil }
-    let resized = mode == "full-decode-scale" ? scaledImage(image, maxPixel: maxPixel) : image
+    let transformed = mode == "full-decode-scale" ? orient(image, orientation: orientation) : image
+    guard let transformed else { return nil }
+    let resized = mode == "full-decode-scale" ? scaledImage(transformed, maxPixel: maxPixel) : transformed
     guard let resized else { return nil }
-    return makeSrgbImage(resized)
+    guard let normalized = makeSrgbImage(resized) else { return nil }
+    return (normalized, orientation, sourceType)
 }
 
 func residentBytes() -> UInt64? {
@@ -209,20 +238,31 @@ func colorSpaceName(_ image: CGImage) -> String? {
     image.colorSpace?.name as String?
 }
 
+func expectedSize(source: CGImageSource, orientation: Int, maxPixel: Int) -> (Int, Int)? {
+    guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+          let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+          let height = properties[kCGImagePropertyPixelHeight] as? NSNumber else { return nil }
+    var w = width.intValue
+    var h = height.intValue
+    if [5, 6, 7, 8].contains(orientation) { swap(&w, &h) }
+    let scale = min(1.0, Double(maxPixel) / Double(max(w, h)))
+    return (max(1, Int((Double(w) * scale).rounded())), max(1, Int((Double(h) * scale).rounded())))
+}
+
 func measure(url: URL, mode: String, arguments: Arguments) -> Observation {
     for _ in 0..<arguments.warmups {
         _ = decode(url, mode: mode, maxPixel: arguments.maxPixel)
     }
 
     var durations: [Double] = []
-    var lastImage: CGImage?
+    var lastResult: (CGImage, Int, String?)?
     var peakResident: UInt64?
 
     for _ in 0..<arguments.iterations {
         let start = DispatchTime.now().uptimeNanoseconds
-        let image = decode(url, mode: mode, maxPixel: arguments.maxPixel)
+        let result = decode(url, mode: mode, maxPixel: arguments.maxPixel)
         let end = DispatchTime.now().uptimeNanoseconds
-        guard let image else {
+        guard let result else {
             return Observation(
                 mode: mode,
                 path: url.path,
@@ -233,16 +273,24 @@ func measure(url: URL, mode: String, arguments: Arguments) -> Observation {
                 width: nil,
                 height: nil,
                 colorSpace: nil,
+                orientation: nil,
+                orientationCorrect: nil,
+                srgbCorrect: nil,
+                sourceType: nil,
                 error: "ImageIO could not decode or normalize the image"
             )
         }
         durations.append(elapsedMilliseconds(start, end))
-        lastImage = image
+        lastResult = result
         if let current = residentBytes() {
             peakResident = max(peakResident ?? current, current)
         }
     }
 
+    let expected = source(for: url).flatMap {
+        expectedSize(source: $0, orientation: lastResult?.1 ?? 1, maxPixel: arguments.maxPixel)
+    }
+    let output = lastResult?.0
     return Observation(
         mode: mode,
         path: url.path,
@@ -250,9 +298,17 @@ func measure(url: URL, mode: String, arguments: Arguments) -> Observation {
         durationP50Milliseconds: percentile(durations, 0.50),
         durationP95Milliseconds: percentile(durations, 0.95),
         residentBytes: peakResident,
-        width: lastImage?.width,
-        height: lastImage?.height,
-        colorSpace: lastImage.flatMap(colorSpaceName),
+        width: output?.width,
+        height: output?.height,
+        colorSpace: output.flatMap(colorSpaceName),
+        orientation: lastResult?.1,
+        orientationCorrect: expected.map {
+            guard let output else { return false }
+            let ratioError = abs(output.width * $0.1 - $0.0 * output.height)
+            return ratioError <= max($0.0, $0.1) && max(output.width, output.height) <= arguments.maxPixel
+        },
+        srgbCorrect: output.flatMap(colorSpaceName) == CGColorSpace.sRGB as String,
+        sourceType: lastResult?.2,
         error: nil
     )
 }
@@ -260,7 +316,7 @@ func measure(url: URL, mode: String, arguments: Arguments) -> Observation {
 do {
     let arguments = try parseArguments()
     let urls = try imageURLs(in: arguments.inputRoot)
-    let modes = ["full-decode-scale", "imageio-thumbnail", "embedded-preferred"]
+    let modes = arguments.mode.map { [$0] } ?? ["full-decode-scale", "imageio-thumbnail", "embedded-preferred"]
     let observations = modes.flatMap { mode in
         urls.map { measure(url: $0, mode: mode, arguments: arguments) }
     }
@@ -273,6 +329,7 @@ do {
         maxPixel: arguments.maxPixel,
         iterations: arguments.iterations,
         warmups: arguments.warmups,
+        mode: arguments.mode,
         observations: observations
     )
     let encoder = JSONEncoder()
