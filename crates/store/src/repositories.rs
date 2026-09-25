@@ -190,6 +190,65 @@ impl<'connection> LocationRepository<'connection> {
             status: LocationStatus::from_str(&raw.5)?,
         })
     }
+
+    pub fn find_by_root_and_path(
+        &self,
+        root_id: i64,
+        relative_path: &str,
+    ) -> Result<Option<Location>> {
+        let id = self
+            .connection
+            .query_row(
+                "SELECT id FROM locations WHERE root_id = ?1 AND relative_path = ?2",
+                params![root_id, relative_path],
+                |row| row.get(0),
+            )
+            .optional()?;
+        id.map(|id| self.get(id)).transpose()
+    }
+
+    pub fn list_for_root(&self, root_id: i64) -> Result<Vec<Location>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id FROM locations WHERE root_id = ?1 ORDER BY relative_path")?;
+        let ids = statement.query_map([root_id], |row| row.get(0))?;
+        let mut locations = Vec::new();
+        for id in ids {
+            locations.push(self.get(id?)?);
+        }
+        Ok(locations)
+    }
+
+    pub fn upsert(&self, location: &NewLocation<'_>) -> Result<Location> {
+        validate_relative_path(location.relative_path)?;
+        self.connection.execute(
+            "INSERT INTO locations (asset_id, root_id, relative_path, modified_at, status) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (root_id, relative_path) DO UPDATE SET asset_id = excluded.asset_id, modified_at = excluded.modified_at, status = excluded.status, updated_at = unixepoch()",
+            params![location.asset_id, location.root_id, location.relative_path, location.modified_at, location.status.as_str()])?;
+        self.find_by_root_and_path(location.root_id, location.relative_path)?
+            .ok_or_else(|| StoreError::CorruptData {
+                field: "location",
+                value: "upserted row was not found".to_owned(),
+            })
+    }
+
+    pub fn mark_missing_except(&self, root_id: i64, relative_paths: &[String]) -> Result<usize> {
+        if relative_paths.is_empty() {
+            return Ok(self.connection.execute("UPDATE locations SET status = 'missing', updated_at = unixepoch() WHERE root_id = ?1 AND status != 'missing'", [root_id])?);
+        }
+        let placeholders = std::iter::repeat_n("?", relative_paths.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!("UPDATE locations SET status = 'missing', updated_at = unixepoch() WHERE root_id = ?1 AND relative_path NOT IN ({placeholders}) AND status != 'missing'");
+        let mut values: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(relative_paths.len() + 1);
+        values.push(&root_id);
+        for path in relative_paths {
+            values.push(path);
+        }
+        Ok(self
+            .connection
+            .execute(&sql, rusqlite::params_from_iter(values))?)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
