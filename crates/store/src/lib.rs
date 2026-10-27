@@ -6,6 +6,7 @@ mod albums;
 mod colors;
 mod embeddings;
 mod error;
+mod feedback;
 mod migrations;
 mod models;
 mod repositories;
@@ -17,6 +18,7 @@ pub use albums::*;
 pub use colors::ColorRepository;
 pub use embeddings::EmbeddingRepository;
 pub use error::{Result, StoreError};
+pub use feedback::FeedbackRepository;
 pub use migrations::{LATEST_SCHEMA_VERSION, MIGRATIONS};
 pub use models::*;
 pub use repositories::*;
@@ -120,6 +122,10 @@ impl Store {
         EmbeddingRepository::new(&self.connection)
     }
 
+    pub fn feedback(&self) -> FeedbackRepository<'_> {
+        FeedbackRepository::new(&self.connection)
+    }
+
     /// Provides transaction access for later use-case orchestration.
     #[must_use]
     pub fn connection(&self) -> &Connection {
@@ -149,6 +155,8 @@ mod album_tests;
 mod color_tests;
 #[cfg(test)]
 mod embedding_tests;
+#[cfg(test)]
+mod feedback_tests;
 #[cfg(test)]
 mod tag_tests;
 #[cfg(test)]

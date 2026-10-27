@@ -11,9 +11,9 @@ use picker_imaging::{
 use picker_indexer::{IdentityReport, IdentityResolver};
 use picker_ml::{BruteForceIndex, Embedder, Tagger, VectorIndex, ZeroShotTagger};
 use picker_store::{
-    Asset, AssetColor, AssetFilter, AssetMetadata, Location, LocationStatus, NewRoot, NewTag, Root,
-    RootStatus, Stage, StageStatus, StageTarget, Store, StoreError, Tag, TagAlias, TagAssignment,
-    TagOrigin, TagState,
+    Asset, AssetColor, AssetFilter, AssetMetadata, FeedbackAction, FeedbackEvent, Location,
+    LocationStatus, NewRoot, NewTag, Root, RootStatus, Stage, StageStatus, StageTarget, Store,
+    StoreError, Tag, TagAlias, TagAssignment, TagOrigin, TagState,
 };
 
 /// Errors returned by the application-independent library service.
@@ -914,17 +914,105 @@ impl Library {
         tag_id: i64,
         state: TagState,
     ) -> Result<usize> {
-        Ok(self
+        if state == TagState::Suggested {
+            return Err(LibraryError::InvalidInput(
+                "user decisions must be confirmed or rejected".to_owned(),
+            ));
+        }
+        let mut previous = Vec::with_capacity(asset_ids.len());
+        for asset_id in asset_ids {
+            previous.push((
+                *asset_id,
+                self.store
+                    .tag_assignments()
+                    .get_optional(*asset_id, tag_id)?,
+            ));
+        }
+        let changed = self
             .store
             .tag_assignments()
-            .set_user_many(asset_ids, tag_id, state)?)
+            .set_user_many(asset_ids, tag_id, state)?;
+        for (asset_id, assignment) in previous {
+            if assignment
+                .as_ref()
+                .is_some_and(|assignment| assignment.state == state)
+            {
+                continue;
+            }
+            let action = match state {
+                TagState::Confirmed => match assignment.as_ref() {
+                    Some(assignment) if assignment.state == TagState::Suggested => {
+                        FeedbackAction::Approved
+                    }
+                    _ => FeedbackAction::ManualAdd,
+                },
+                TagState::Rejected => FeedbackAction::Rejected,
+                TagState::Suggested => unreachable!(),
+            };
+            self.store.feedback().record(
+                asset_id,
+                tag_id,
+                action,
+                assignment.as_ref().and_then(|value| value.confidence),
+                assignment.as_ref(),
+            )?;
+        }
+        Ok(changed)
     }
 
     pub fn remove_tag_from_assets(&self, asset_ids: &[i64], tag_id: i64) -> Result<usize> {
-        Ok(self
+        let mut previous = Vec::with_capacity(asset_ids.len());
+        for asset_id in asset_ids {
+            if let Some(assignment) = self
+                .store
+                .tag_assignments()
+                .get_optional(*asset_id, tag_id)?
+            {
+                if assignment.source == picker_store::AssignmentSource::User {
+                    previous.push((*asset_id, assignment));
+                }
+            }
+        }
+        let changed = self
             .store
             .tag_assignments()
-            .remove_user_many(asset_ids, tag_id)?)
+            .remove_user_many(asset_ids, tag_id)?;
+        for (asset_id, assignment) in previous {
+            self.store.feedback().record(
+                asset_id,
+                tag_id,
+                FeedbackAction::ManualRemove,
+                assignment.confidence,
+                Some(&assignment),
+            )?;
+        }
+        Ok(changed)
+    }
+
+    /// Restores the assignment that a feedback event replaced.
+    pub fn undo_feedback(&self, event_id: i64) -> Result<FeedbackEvent> {
+        let event = self
+            .store
+            .feedback()
+            .get(event_id)?
+            .ok_or_else(|| LibraryError::InvalidInput("feedback event not found".to_owned()))?;
+        let tag_id = event
+            .tag_id
+            .ok_or_else(|| LibraryError::InvalidInput("tag was deleted".to_owned()))?;
+        let current = self
+            .store
+            .tag_assignments()
+            .get_optional(event.asset_id, tag_id)?;
+        self.store
+            .tag_assignments()
+            .restore(event.asset_id, tag_id, &event)?;
+        Ok(self.store.feedback().record(
+            event.asset_id,
+            tag_id,
+            FeedbackAction::Undo,
+            current.as_ref().and_then(|value| value.confidence),
+            current.as_ref(),
+        )?)
     }
 
     /// Applies tag, attribute, and cursor filters in the database.

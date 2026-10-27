@@ -201,6 +201,30 @@ pub struct NearDuplicate {
     pub distance: u32,
 }
 
+string_enum!(FeedbackAction {
+    Approved => "approved",
+    Rejected => "rejected",
+    ManualAdd => "manual_add",
+    ManualRemove => "manual_remove",
+    Undo => "undo",
+});
+
+/// One recorded user decision, including the state it replaced.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeedbackEvent {
+    pub id: i64,
+    pub asset_id: i64,
+    pub tag_id: Option<i64>,
+    pub action: FeedbackAction,
+    pub confidence: Option<f64>,
+    pub previous_state: Option<TagState>,
+    pub previous_source: Option<AssignmentSource>,
+    pub previous_confidence: Option<f64>,
+    pub previous_model_id: Option<String>,
+    pub previous_model_version: Option<String>,
+    pub created_at: i64,
+}
+
 string_enum!(TagOrigin {
     User => "user",
     ZeroShot => "zero_shot",
