@@ -167,14 +167,23 @@
     });
   }
 
-  async function findSimilar() {
-    if (!detail) return;
+  async function findSimilarFor(assetId: string) {
     await guard(async () => {
-      resultItems = await similarAssets(detail!.summary.id, 50);
+      resultItems = await similarAssets(assetId, 50);
       resultLabel = "似た画像";
       viewMode = "similar";
       clearSelection();
     });
+  }
+
+  async function findSimilar() {
+    if (detail) await findSimilarFor(detail.summary.id);
+  }
+
+  async function contextMenu(asset: AssetSummaryView) {
+    selection.clear();
+    selection.add(asset.id);
+    await findSimilarFor(asset.id);
   }
 
   function modelPercent(progress: ModelProgressEvent) {

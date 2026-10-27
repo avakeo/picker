@@ -6,6 +6,7 @@
   export let items: AssetSummaryView[] = [];
   export let selectedIds = new Set<string>();
   export let onSelect: (asset: AssetSummaryView) => void = () => {};
+  export let onContextMenu: (asset: AssetSummaryView) => void = () => {};
   export let onNearEnd: () => void = () => {};
   export let onVisible: (assetIds: string[]) => void = () => {};
   export let tileWidth = 176;
@@ -67,6 +68,10 @@
         type="button"
         aria-label={`画像 ${asset.id}`}
         onclick={() => onSelect(asset)}
+        oncontextmenu={(event) => {
+          event.preventDefault();
+          onContextMenu(asset);
+        }}
       >
         <img src={thumbnail(asset.id)} alt="" loading="lazy" />
         {#if asset.locationStatus !== "present"}
