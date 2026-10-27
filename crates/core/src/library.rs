@@ -9,7 +9,10 @@ use picker_imaging::{
     RustFallbackDecoder, ThumbnailSize,
 };
 use picker_indexer::{IdentityReport, IdentityResolver};
-use picker_ml::{BruteForceIndex, Embedder, Tagger, VectorIndex, ZeroShotTagger};
+use picker_ml::{
+    select_review_candidates, BruteForceIndex, Embedder, LogisticRegression, Tagger, VectorIndex,
+    ZeroShotTagger,
+};
 use picker_store::{
     Asset, AssetColor, AssetFilter, AssetMetadata, FeedbackAction, FeedbackEvent, Location,
     LocationStatus, NewRoot, NewTag, Root, RootStatus, Stage, StageStatus, StageTarget, Store,
@@ -1022,6 +1025,15 @@ impl Library {
             .store
             .tag_assignments()
             .list_for_tag(tag_id, TagState::Confirmed)?;
+        let rejected = self
+            .store
+            .tag_assignments()
+            .list_for_tag(tag_id, TagState::Rejected)?;
+        if self.store.classifiers().get(tag_id)?.is_some()
+            || (positives.len() >= 10 && rejected.len() >= 10)
+        {
+            return self.train_custom_tag(tag_id);
+        }
         let mut prototype = Vec::new();
         for assignment in &positives {
             if let Some(embedding) =
@@ -1105,6 +1117,150 @@ impl Library {
             )?;
         }
         Ok(suggested)
+    }
+
+    /// Trains the stage-B logistic classifier and refreshes its suggestions.
+    pub fn train_custom_tag(&self, tag_id: i64) -> Result<usize> {
+        const STAGE_VERSION: &str = "logistic-v1";
+        let tag = self.store.tags().get(tag_id)?;
+        if tag.namespace != "custom" {
+            return Err(LibraryError::InvalidInput(
+                "custom classifiers require a custom tag".to_owned(),
+            ));
+        }
+        let (model_id, model_version, dimensions) = {
+            let vectors = self
+                .vectors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let state = vectors.as_ref().ok_or_else(|| {
+                LibraryError::InvalidInput("埋め込みモデルが未設定です。".to_owned())
+            })?;
+            (
+                state.model_id.clone(),
+                state.model_version.clone(),
+                state.index.dimensions(),
+            )
+        };
+        let embeddings = self
+            .store
+            .embeddings()
+            .list_for_model(&model_id, &model_version)?;
+        let positives: std::collections::HashSet<i64> = self
+            .store
+            .tag_assignments()
+            .list_for_tag(tag_id, TagState::Confirmed)?
+            .into_iter()
+            .map(|assignment| assignment.asset_id)
+            .collect();
+        let mut negatives: std::collections::BTreeSet<i64> = self
+            .store
+            .tag_assignments()
+            .list_for_tag(tag_id, TagState::Rejected)?
+            .into_iter()
+            .map(|assignment| assignment.asset_id)
+            .collect();
+        negatives.extend(
+            self.store
+                .tag_assignments()
+                .confirmed_asset_ids_excluding(tag_id, 5000)?,
+        );
+        negatives.retain(|asset_id| !positives.contains(asset_id));
+        if positives.len() < 10 || negatives.len() < 10 {
+            return Err(LibraryError::InvalidInput(
+                "10 positives and 10 negatives are required".to_owned(),
+            ));
+        }
+        let mut samples = Vec::with_capacity(positives.len() + negatives.len());
+        for embedding in &embeddings {
+            if positives.contains(&embedding.asset_id) {
+                samples.push((embedding.vector.clone(), true));
+            } else if negatives.contains(&embedding.asset_id) {
+                samples.push((embedding.vector.clone(), false));
+            }
+        }
+        let mut classifier = LogisticRegression::new(dimensions);
+        classifier.fit(&samples, 0.001, 5.0, 20);
+        self.store.classifiers().upsert(
+            tag_id,
+            u32::try_from(dimensions).unwrap_or(u32::MAX),
+            classifier.weights(),
+            classifier.bias(),
+        )?;
+        let mut suggested = 0;
+        for embedding in embeddings {
+            let probability = classifier.predict(&embedding.vector);
+            self.store.tag_assignments().clear_suggested(
+                embedding.asset_id,
+                tag_id,
+                picker_store::AssignmentSource::CustomClassifier,
+            )?;
+            if probability >= 0.5 {
+                self.store.tag_assignments().upsert_suggested(
+                    embedding.asset_id,
+                    tag_id,
+                    picker_store::AssignmentSource::CustomClassifier,
+                    probability,
+                    &model_id,
+                    &model_version,
+                )?;
+                suggested += 1;
+            }
+            self.store.stage_states().upsert(
+                StageTarget::Asset(embedding.asset_id),
+                Stage::CustomSuggest,
+                StageStatus::Succeeded,
+                STAGE_VERSION,
+                None,
+            )?;
+        }
+        Ok(suggested)
+    }
+
+    /// Returns review candidates for a tag, mixing confident and borderline items.
+    pub fn review_candidates(&self, tag_id: i64, total: u32, high_ratio: f64) -> Result<Vec<i64>> {
+        let assignments = self
+            .store
+            .tag_assignments()
+            .list_for_tag(tag_id, TagState::Suggested)?;
+        let scored: Vec<(i64, f64)> = assignments
+            .into_iter()
+            .map(|assignment| (assignment.asset_id, assignment.confidence.unwrap_or(0.0)))
+            .collect();
+        Ok(
+            select_review_candidates(&scored, total.clamp(1, 100) as usize, high_ratio)
+                .into_iter()
+                .map(|(asset_id, _)| asset_id)
+                .collect(),
+        )
+    }
+
+    /// Applies a review batch and returns the recorded feedback event ids.
+    pub fn confirm_review(&self, tag_id: i64, keep: &[i64], reject: &[i64]) -> Result<Vec<i64>> {
+        let tag = self.store.tags().get(tag_id)?;
+        let mut events = Vec::new();
+        for (asset_ids, state) in [(keep, TagState::Confirmed), (reject, TagState::Rejected)] {
+            if asset_ids.is_empty() {
+                continue;
+            }
+            self.set_tag_on_assets(asset_ids, tag_id, state)?;
+            for asset_id in asset_ids {
+                if let Some(event) = self
+                    .store
+                    .feedback()
+                    .list_for_asset(*asset_id)?
+                    .into_iter()
+                    .rev()
+                    .find(|event| event.tag_id == Some(tag_id))
+                {
+                    events.push(event.id);
+                }
+            }
+        }
+        if tag.namespace == "custom" {
+            let _ = self.train_custom_tag(tag_id);
+        }
+        Ok(events)
     }
 
     /// Restores the assignment that a feedback event replaced.

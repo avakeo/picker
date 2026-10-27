@@ -8,6 +8,9 @@ use picker_core::{Library, ThumbnailState};
 use picker_store::{AssetFilter, LocationStatus, RootStatus, TagFilter, TagMatchMode, TagState};
 use tauri::State;
 
+use crate::contract::{
+    CustomTrainRequest, FeedbackUndoRequest, ReviewConfirmRequest, ReviewRequest,
+};
 use picker_ml::ModelRegistry;
 use std::sync::Arc;
 
@@ -590,6 +593,65 @@ pub fn custom_suggest(
         .library()
         .suggest_custom_tag(tag_id, request.limit)
         .map_err(error)
+}
+
+#[tauri::command]
+pub fn custom_train(
+    state: State<'_, AppState>,
+    request: CustomTrainRequest,
+) -> CommandResult<usize> {
+    let tag_id = parse_id(&request.tag_id)?;
+    state.library().train_custom_tag(tag_id).map_err(error)
+}
+
+#[tauri::command]
+pub fn review_candidates(
+    state: State<'_, AppState>,
+    request: ReviewRequest,
+) -> CommandResult<Vec<AssetSummaryView>> {
+    let tag_id = parse_id(&request.tag_id)?;
+    let library = state.library();
+    let ids = library
+        .review_candidates(tag_id, request.limit, request.high_ratio)
+        .map_err(error)?;
+    let mut items = Vec::with_capacity(ids.len());
+    for id in ids {
+        items.push(summary_view(library.asset_summary(id).map_err(error)?));
+    }
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn review_confirm(
+    state: State<'_, AppState>,
+    request: ReviewConfirmRequest,
+) -> CommandResult<Vec<String>> {
+    let tag_id = parse_id(&request.tag_id)?;
+    let keep = request
+        .keep_asset_ids
+        .iter()
+        .map(|id| parse_id(id))
+        .collect::<CommandResult<Vec<_>>>()?;
+    let reject = request
+        .reject_asset_ids
+        .iter()
+        .map(|id| parse_id(id))
+        .collect::<CommandResult<Vec<_>>>()?;
+    state
+        .library()
+        .confirm_review(tag_id, &keep, &reject)
+        .map(|events| events.into_iter().map(|id| id.to_string()).collect())
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn feedback_undo(
+    state: State<'_, AppState>,
+    request: FeedbackUndoRequest,
+) -> CommandResult<()> {
+    let event_id = parse_id(&request.event_id)?;
+    state.library().undo_feedback(event_id).map_err(error)?;
+    Ok(())
 }
 
 #[tauri::command]

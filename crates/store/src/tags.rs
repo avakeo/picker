@@ -456,6 +456,17 @@ impl<'connection> TagAssignmentRepository<'connection> {
             .map_err(StoreError::from)
     }
 
+    pub fn confirmed_asset_ids_excluding(&self, tag_id: i64, limit: u32) -> Result<Vec<i64>> {
+        let mut statement = self.connection.prepare(
+            "SELECT DISTINCT asset_id FROM tag_assignments
+             WHERE state = 'confirmed' AND tag_id != ?1
+             ORDER BY asset_id LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![tag_id, limit], |row| row.get(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(StoreError::from)
+    }
+
     pub fn clear_suggested(
         &self,
         asset_id: i64,

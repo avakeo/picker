@@ -47,9 +47,14 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "feedback_events",
         sql: include_str!("../migrations/0007_feedback_events.sql"),
     },
+    Migration {
+        version: 8,
+        name: "custom_classifiers",
+        sql: include_str!("../migrations/0008_custom_classifiers.sql"),
+    },
 ];
 
-pub const LATEST_SCHEMA_VERSION: u32 = 7;
+pub const LATEST_SCHEMA_VERSION: u32 = 8;
 
 pub(crate) fn migrate(connection: &Connection) -> Result<()> {
     connection.execute_batch(

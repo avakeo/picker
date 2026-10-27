@@ -201,6 +201,16 @@ pub struct NearDuplicate {
     pub distance: u32,
 }
 
+/// A persisted binary classifier for one custom tag.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomClassifier {
+    pub tag_id: i64,
+    pub dimensions: u32,
+    pub weights: Vec<f64>,
+    pub bias: f64,
+    pub trained_at: i64,
+}
+
 string_enum!(FeedbackAction {
     Approved => "approved",
     Rejected => "rejected",

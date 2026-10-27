@@ -571,3 +571,138 @@ fn custom_prototype_suggestions_follow_confirmed_examples() {
         picker_store::AssignmentSource::CustomClassifier
     );
 }
+
+#[test]
+fn custom_classifier_switches_on_after_ten_examples() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    for index in 0..10 {
+        fs::write(
+            media.path().join(format!("pos{index}.png")),
+            png_bytes(index),
+        )
+        .expect("write");
+        fs::write(
+            media.path().join(format!("neg{index}.png")),
+            png_bytes(100 + index),
+        )
+        .expect("write");
+    }
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    library
+        .set_embedder(Some(std::sync::Arc::new(PathEmbedder)))
+        .expect("embedder");
+    library.index_embeddings(50).expect("index");
+    let tag = library
+        .create_tag("robot", "ロボット", None, None)
+        .expect("tag");
+    let tag = library.convert_tag_to_custom(tag.id).expect("custom");
+    let mut positives = Vec::new();
+    let mut negatives = Vec::new();
+    for index in 0..10 {
+        positives.push(asset_id_named(&library, &format!("pos{index}.png")));
+        negatives.push(asset_id_named(&library, &format!("neg{index}.png")));
+    }
+    library
+        .set_tag_on_assets(&positives, tag.id, picker_store::TagState::Confirmed)
+        .expect("positives");
+    library
+        .set_tag_on_assets(&negatives, tag.id, picker_store::TagState::Rejected)
+        .expect("negatives");
+    library.suggest_custom_tag(tag.id, 100).expect("suggest");
+    assert!(library
+        .store()
+        .classifiers()
+        .get(tag.id)
+        .expect("classifier")
+        .is_some());
+    for asset_id in positives {
+        let probability = library
+            .store()
+            .tag_assignments()
+            .get_optional(asset_id, tag.id)
+            .expect("assignment");
+        assert_eq!(
+            probability.expect("confirmed").state,
+            picker_store::TagState::Confirmed
+        );
+    }
+}
+
+#[test]
+fn review_confirm_approves_kept_rejects_excluded_and_undoes() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(80)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let assets = library.asset_page(0, 10).expect("page").items;
+    let tag = library
+        .create_tag("beach", "海辺", None, None)
+        .expect("tag");
+    for asset in &assets {
+        library
+            .store()
+            .tag_assignments()
+            .upsert_suggested(
+                asset.id,
+                tag.id,
+                picker_store::AssignmentSource::ZeroShot,
+                0.7,
+                "clip",
+                "v1",
+            )
+            .expect("suggest");
+    }
+    let candidates = library.review_candidates(tag.id, 20, 0.5).expect("review");
+    assert_eq!(candidates.len(), 2);
+    let keep = candidates[0];
+    let reject = candidates[1];
+    let events = library
+        .confirm_review(tag.id, &[keep], &[reject])
+        .expect("confirm");
+    assert_eq!(events.len(), 2);
+    assert_eq!(
+        library
+            .store()
+            .tag_assignments()
+            .get(keep, tag.id)
+            .expect("keep")
+            .state,
+        picker_store::TagState::Confirmed
+    );
+    assert_eq!(
+        library
+            .store()
+            .tag_assignments()
+            .get(reject, tag.id)
+            .expect("reject")
+            .state,
+        picker_store::TagState::Rejected
+    );
+    for event in events.into_iter().rev() {
+        library.undo_feedback(event).expect("undo");
+    }
+    assert_eq!(
+        library
+            .store()
+            .tag_assignments()
+            .get(keep, tag.id)
+            .expect("keep")
+            .state,
+        picker_store::TagState::Suggested
+    );
+    assert_eq!(
+        library
+            .store()
+            .tag_assignments()
+            .get(reject, tag.id)
+            .expect("reject")
+            .state,
+        picker_store::TagState::Suggested
+    );
+}

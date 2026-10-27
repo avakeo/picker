@@ -121,6 +121,10 @@ pub fn generated_typescript() -> String {
         TagView::decl(&config),
         TagIdRequest::decl(&config),
         CustomSuggestRequest::decl(&config),
+        CustomTrainRequest::decl(&config),
+        ReviewRequest::decl(&config),
+        ReviewConfirmRequest::decl(&config),
+        FeedbackUndoRequest::decl(&config),
         TagAliasView::decl(&config),
         AssetTagView::decl(&config),
         TagCreateRequest::decl(&config),
@@ -179,6 +183,10 @@ pub fn generated_typescript() -> String {
            tagCreate: \"tag_create\",
            tagConvertToCustom: \"tag_convert_to_custom\",
            customSuggest: \"custom_suggest\",
+           customTrain: \"custom_train\",
+           reviewCandidates: \"review_candidates\",
+           reviewConfirm: \"review_confirm\",
+           feedbackUndo: \"feedback_undo\",
            tagRename: \"tag_rename\",
            tagDelete: \"tag_delete\",
            tagSetParent: \"tag_set_parent\",
@@ -460,6 +468,42 @@ pub struct TagIdRequest {
 pub struct CustomSuggestRequest {
     pub tag_id: String,
     pub limit: u32,
+}
+
+/// Request to train one custom tag classifier.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct CustomTrainRequest {
+    pub tag_id: String,
+}
+
+/// Request for a review batch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct ReviewRequest {
+    pub tag_id: String,
+    pub limit: u32,
+    pub high_ratio: f64,
+}
+
+/// Confirmation of a review batch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct ReviewConfirmRequest {
+    pub tag_id: String,
+    pub keep_asset_ids: Vec<String>,
+    pub reject_asset_ids: Vec<String>,
+}
+
+/// Request to undo a recorded feedback event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct FeedbackUndoRequest {
+    pub event_id: String,
 }
 
 /// Request for `tag_create`.

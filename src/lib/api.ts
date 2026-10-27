@@ -263,3 +263,19 @@ export function convertTagToCustom(id: string): Promise<TagView> {
 export function customSuggest(tagId: string, limit: number): Promise<number> {
   return invoke("custom_suggest", { request: { tagId, limit } });
 }
+
+export function trainCustomTag(tagId: string): Promise<number> {
+  return invoke("custom_train", { request: { tagId } });
+}
+
+export function reviewCandidates(tagId: string, limit = 20, highRatio = 0.5): Promise<AssetSummaryView[]> {
+  return invoke("review_candidates", { request: { tagId, limit, highRatio } });
+}
+
+export function confirmReview(tagId: string, keepAssetIds: string[], rejectAssetIds: string[]): Promise<string[]> {
+  return invoke("review_confirm", { request: { tagId, keepAssetIds, rejectAssetIds } });
+}
+
+export function undoFeedback(eventId: string): Promise<void> {
+  return invoke("feedback_undo", { request: { eventId } });
+}
