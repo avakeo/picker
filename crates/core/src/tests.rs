@@ -706,3 +706,63 @@ fn review_confirm_approves_kept_rejects_excluded_and_undoes() {
         picker_store::TagState::Suggested
     );
 }
+
+#[test]
+fn portable_export_restores_tags_after_rescan() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(60)).expect("write");
+    let export_dir = tempfile::tempdir().expect("export");
+    let export_path = export_dir.path().join("decisions.json");
+    let source = Library::open_in_memory(cache.path()).expect("library");
+    let root = source.add_root(media.path(), "root").expect("root");
+    source.scan_root(root.id).expect("scan");
+    let tagged = asset_id_named(&source, "one.png");
+    let tag = source.create_tag("beach", "海辺", None, None).expect("tag");
+    source
+        .set_tag_on_assets(&[tagged], tag.id, picker_store::TagState::Confirmed)
+        .expect("assign");
+    source.export_portable(&export_path).expect("export");
+
+    let cache2 = tempfile::tempdir().expect("cache2");
+    let restored = Library::open_in_memory(cache2.path()).expect("library2");
+    restored.import_portable(&export_path).expect("import");
+    let root = restored.add_root(media.path(), "root").expect("root");
+    restored.scan_root(root.id).expect("scan");
+    let restored_asset = asset_id_named(&restored, "one.png");
+    let tags = restored.asset_detail(restored_asset).expect("detail").tags;
+    assert!(tags.iter().any(|assigned| {
+        assigned.tag.canonical_name == "beach"
+            && assigned.assignment.state == picker_store::TagState::Confirmed
+    }));
+}
+
+#[test]
+fn xmp_export_writes_only_when_enabled_and_preserves_existing_fields() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let asset_id = asset_id_named(&library, "one.png");
+    let tag = library
+        .create_tag("beach", "海辺", None, None)
+        .expect("tag");
+    library
+        .set_tag_on_assets(&[asset_id], tag.id, picker_store::TagState::Confirmed)
+        .expect("tag");
+    assert_eq!(library.export_xmp(asset_id).expect("disabled"), 0);
+    let sidecar = media.path().join("one.png.xmp");
+    fs::write(
+        &sidecar,
+        "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"><xmp:Rating>4</xmp:Rating></rdf:Description></rdf:RDF></x:xmpmeta>",
+    )
+    .expect("sidecar");
+    library.set_setting("xmp.enabled", "true").expect("setting");
+    assert_eq!(library.export_xmp(asset_id).expect("export"), 1);
+    let written = fs::read_to_string(&sidecar).expect("read");
+    assert!(written.contains("<xmp:Rating>4</xmp:Rating>"));
+    assert!(written.contains("<rdf:li>海辺</rdf:li>"));
+}

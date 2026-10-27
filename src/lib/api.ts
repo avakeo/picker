@@ -279,3 +279,23 @@ export function confirmReview(tagId: string, keepAssetIds: string[], rejectAsset
 export function undoFeedback(eventId: string): Promise<void> {
   return invoke("feedback_undo", { request: { eventId } });
 }
+
+export function exportPortable(path: string): Promise<number> {
+  return invoke("portable_export", { request: { path } });
+}
+
+export function importPortable(path: string): Promise<number> {
+  return invoke("portable_import", { request: { path } });
+}
+
+export function getSetting(key: string): Promise<string | null> {
+  return invoke("setting_get", { request: { key } });
+}
+
+export function setSetting(key: string, value: string): Promise<void> {
+  return invoke("setting_set", { request: { key, value } });
+}
+
+export function exportXmp(assetId: string): Promise<number> {
+  return invoke("xmp_export", { request: { id: assetId } });
+}

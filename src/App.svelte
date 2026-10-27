@@ -19,7 +19,11 @@
     deleteAlbum,
     embeddingStatus,
     deleteTag,
+    exportPortable,
+    exportXmp,
+    getSetting,
     filterAssets,
+    importPortable,
     indexEmbeddings,
     indexStatus,
     installModel,
@@ -49,6 +53,7 @@
     revealAsset,
     searchAssets,
     setRootEnabled,
+    setSetting,
     semanticSearch,
     setTagParent,
     similarAssets,
@@ -87,6 +92,9 @@
   let reviewExcluded = new SvelteSet<string>();
   let reviewCursor = 0;
   let reviewEvents: string[] = [];
+  let portablePath = "";
+  let xmpEnabled = false;
+  let reviewRatio = 0.5;
   let modelProgress: ModelProgressEvent | null = null;
   let installingModel = "";
   let currentAlbumId = "";
@@ -160,6 +168,24 @@
 
   async function refreshEmbeddings() {
     embeddings = await embeddingStatus();
+  }
+
+  async function refreshSettings() {
+    xmpEnabled = (await getSetting("xmp.enabled")) === "true";
+    reviewRatio = Number((await getSetting("review.high_ratio")) ?? "0.5");
+  }
+
+  async function toggleXmp(enabled: boolean) {
+    xmpEnabled = enabled;
+    await guard(async () => {
+      await setSetting("xmp.enabled", enabled ? "true" : "false");
+      if (enabled && detail) await exportXmp(detail.summary.id);
+    });
+  }
+
+  async function changeReviewRatio(value: number) {
+    reviewRatio = value;
+    await guard(async () => setSetting("review.high_ratio", String(value)));
   }
 
   async function runEmbeddingBatch() {
@@ -293,6 +319,7 @@
         refreshAlbums(),
         refreshModels(),
         refreshEmbeddings(),
+        refreshSettings(),
         refreshPage(true),
         refreshStatus()
       ]);
@@ -573,7 +600,7 @@
 
   async function openReview(tag: TagView) {
     await guard(async () => {
-      reviewItems = await reviewCandidates(tag.id, 20, 0.5);
+      reviewItems = await reviewCandidates(tag.id, 20, reviewRatio);
       reviewTagId = tag.id;
       reviewExcluded = new SvelteSet();
       reviewCursor = 0;
@@ -626,6 +653,21 @@
     } else if (event.key === "Enter") {
       void confirmReviewBatch();
     }
+  }
+
+  async function handleExport() {
+    if (!portablePath.trim()) return;
+    await guard(async () => {
+      await exportPortable(portablePath.trim());
+    });
+  }
+
+  async function handleImport() {
+    if (!portablePath.trim()) return;
+    await guard(async () => {
+      await importPortable(portablePath.trim());
+      await Promise.all([refreshTags(), refreshPage(true)]);
+    });
   }
 
   async function handleCreateTag() {
@@ -830,6 +872,32 @@
       {/if}
     </section>
 
+    <section class="settings">
+      <h2>設定</h2>
+      <label class="check">
+        <input type="checkbox" checked={xmpEnabled} onchange={(event) => void toggleXmp(event.currentTarget.checked)} />
+        XMP サイドカーを書き出す
+      </label>
+      <label class="check">
+        レビューの高スコア比率
+        <input
+          class="num"
+          type="number"
+          min="0"
+          max="1"
+          step="0.1"
+          value={reviewRatio}
+          onchange={(event) => void changeReviewRatio(Number(event.currentTarget.value))}
+        />
+      </label>
+      <details class="about">
+        <summary>このアプリについて</summary>
+        <p>Picker 0.1.0（開発版）・MIT License</p>
+        <p>依存ライブラリのライセンスは docs/licenses.md、SBOM は docs/sbom.cdx.json にあります。モデルのライセンスは上記の各モデルに表示しています。</p>
+        <p>通信はモデルのダウンロードのみです。テレメトリはありません。</p>
+      </details>
+    </section>
+
     <section class="albums">
       <h2>アルバム</h2>
       <form class="inline" onsubmit={(event) => { event.preventDefault(); void handleCreateAlbum(); }}>
@@ -993,6 +1061,11 @@
           </li>
         {/each}
       </ul>
+      <div class="inline">
+        <input bind:value={portablePath} placeholder="/path/to/decisions.json" aria-label="エクスポート先" />
+        <button type="button" disabled={busy || !portablePath.trim()} onclick={() => void handleExport()}>書き出す</button>
+        <button type="button" disabled={busy || !portablePath.trim()} onclick={() => void handleImport()}>読み込む</button>
+      </div>
     </details>
   </aside>
 

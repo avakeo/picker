@@ -9,7 +9,8 @@ use picker_store::{AssetFilter, LocationStatus, RootStatus, TagFilter, TagMatchM
 use tauri::State;
 
 use crate::contract::{
-    CustomTrainRequest, FeedbackUndoRequest, ReviewConfirmRequest, ReviewRequest,
+    CustomTrainRequest, FeedbackUndoRequest, PortablePathRequest, ReviewConfirmRequest,
+    ReviewRequest, SettingGetRequest, SettingRequest,
 };
 use picker_ml::ModelRegistry;
 use std::sync::Arc;
@@ -1029,4 +1030,48 @@ pub fn configure_embedder(library: &mut Library, registry: &ModelRegistry) -> Re
     library
         .set_embedder(Some(Arc::new(embedder)))
         .map_err(error)
+}
+
+#[tauri::command]
+pub fn portable_export(
+    state: State<'_, AppState>,
+    request: PortablePathRequest,
+) -> CommandResult<usize> {
+    state
+        .library()
+        .export_portable(std::path::Path::new(&request.path))
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn portable_import(
+    state: State<'_, AppState>,
+    request: PortablePathRequest,
+) -> CommandResult<usize> {
+    state
+        .library()
+        .import_portable(std::path::Path::new(&request.path))
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn setting_get(
+    state: State<'_, AppState>,
+    request: SettingGetRequest,
+) -> CommandResult<Option<String>> {
+    state.library().get_setting(&request.key).map_err(error)
+}
+
+#[tauri::command]
+pub fn setting_set(state: State<'_, AppState>, request: SettingRequest) -> CommandResult<()> {
+    state
+        .library()
+        .set_setting(&request.key, &request.value)
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn xmp_export(state: State<'_, AppState>, request: IdRequest) -> CommandResult<usize> {
+    let id = parse_id(&request.id)?;
+    state.library().export_xmp(id).map_err(error)
 }
