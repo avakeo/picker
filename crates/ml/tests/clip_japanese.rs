@@ -23,7 +23,7 @@ fn matches_reference_vectors_and_is_reproducible() {
     }
     let golden: Value =
         serde_json::from_str(include_str!("golden/clip-japanese.json")).expect("golden json");
-    let embedder = ClipJapanese::open(&root, "clip-japanese@77a62f8").expect("load model");
+    let embedder = ClipJapanese::open(&root, "clip-japanese", "77a62f8").expect("load model");
     assert_eq!(embedder.dimensions(), 512);
 
     for (name, expected) in golden["images"].as_object().expect("images") {

@@ -1,6 +1,7 @@
 use std::{
     fmt, fs,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 use picker_imaging::{
@@ -8,6 +9,7 @@ use picker_imaging::{
     RustFallbackDecoder, ThumbnailSize,
 };
 use picker_indexer::{IdentityReport, IdentityResolver};
+use picker_ml::{BruteForceIndex, Embedder, VectorIndex};
 use picker_store::{
     Asset, AssetColor, AssetFilter, AssetMetadata, Location, LocationStatus, NewRoot, NewTag, Root,
     RootStatus, Stage, StageStatus, StageTarget, Store, StoreError, Tag, TagAlias, TagAssignment,
@@ -133,6 +135,16 @@ pub struct StageProgress {
     pub failed: u32,
 }
 
+/// Progress of the active embedding model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddingProgress {
+    pub model_id: String,
+    pub model_version: String,
+    pub dimensions: u32,
+    pub indexed: u32,
+    pub missing: u32,
+}
+
 /// Overall indexing status.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexStatus {
@@ -142,10 +154,31 @@ pub struct IndexStatus {
 }
 
 /// Application-independent library facade used by the Tauri layer.
-#[derive(Debug)]
 pub struct Library {
     store: Store,
     cache_root: PathBuf,
+    embedder: Mutex<Option<Arc<dyn Embedder>>>,
+    vectors: Mutex<Option<VectorState>>,
+}
+
+struct VectorState {
+    model_id: String,
+    model_version: String,
+    index: BruteForceIndex,
+}
+
+impl fmt::Debug for Library {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Library")
+            .field("store", &self.store)
+            .field("cache_root", &self.cache_root)
+            .field(
+                "embedder",
+                &self.embedder.lock().map(|value| value.is_some()),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl Library {
@@ -156,6 +189,8 @@ impl Library {
         Ok(Self {
             store: Store::open(database)?,
             cache_root,
+            embedder: Mutex::new(None),
+            vectors: Mutex::new(None),
         })
     }
 
@@ -166,6 +201,8 @@ impl Library {
         Ok(Self {
             store: Store::open_in_memory()?,
             cache_root,
+            embedder: Mutex::new(None),
+            vectors: Mutex::new(None),
         })
     }
 
@@ -312,6 +349,10 @@ impl Library {
         Ok(())
     }
 
+    pub fn asset_summary(&self, asset_id: i64) -> Result<AssetSummary> {
+        self.summary(self.store.assets().get(asset_id)?)
+    }
+
     pub fn asset_page(&self, after_id: i64, limit: u32) -> Result<AssetPage> {
         let limit = limit.clamp(1, 500);
         let assets = self.store.assets().page(after_id, limit + 1)?;
@@ -394,6 +435,215 @@ impl Library {
             }
         }
         Ok(self.store.colors().list(asset_id)?)
+    }
+
+    /// Installs the active embedder and rebuilds the in-memory vector index.
+    pub fn set_embedder(&self, embedder: Option<Arc<dyn Embedder>>) -> Result<()> {
+        if let Some(embedder) = &embedder {
+            let model_id = embedder.model_id().to_owned();
+            let model_version = embedder.model_version().to_owned();
+            let stored = self
+                .store
+                .embeddings()
+                .list_for_model(&model_id, &model_version)?;
+            let mut index = BruteForceIndex::new(embedder.dimensions());
+            for embedding in stored {
+                if embedding.dimensions as usize != embedder.dimensions() {
+                    return Err(LibraryError::InvalidInput(format!(
+                        "stored embedding dimension {} does not match model dimension {}",
+                        embedding.dimensions,
+                        embedder.dimensions()
+                    )));
+                }
+                index
+                    .upsert(embedding.asset_id, &embedding.vector)
+                    .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
+            }
+            *self
+                .vectors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(VectorState {
+                model_id,
+                model_version,
+                index,
+            });
+            *self
+                .embedder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::clone(embedder));
+        } else {
+            *self
+                .embedder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            *self
+                .vectors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        }
+        Ok(())
+    }
+
+    pub fn embedding_progress(&self) -> Result<Option<EmbeddingProgress>> {
+        let vectors = self
+            .vectors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(state) = vectors.as_ref() else {
+            return Ok(None);
+        };
+        Ok(Some(EmbeddingProgress {
+            model_id: state.model_id.clone(),
+            model_version: state.model_version.clone(),
+            dimensions: u32::try_from(state.index.dimensions()).unwrap_or(u32::MAX),
+            indexed: u32::try_from(state.index.len()).unwrap_or(u32::MAX),
+            missing: self
+                .store
+                .embeddings()
+                .count_missing(&state.model_id, &state.model_version)?,
+        }))
+    }
+
+    #[must_use]
+    pub fn embedder_dimensions(&self) -> Option<usize> {
+        self.embedder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|embedder| embedder.dimensions())
+    }
+
+    /// Embeds up to `limit` assets that lack the active model's vector.
+    pub fn index_embeddings(&self, limit: u32) -> Result<usize> {
+        let embedder = self
+            .embedder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or_else(|| LibraryError::InvalidInput("埋め込みモデルが未設定です。".to_owned()))?;
+        let model_id = embedder.model_id().to_owned();
+        let model_version = embedder.model_version().to_owned();
+        let missing =
+            self.store
+                .embeddings()
+                .missing_asset_ids(&model_id, &model_version, limit)?;
+        let mut processed = 0;
+        for asset_id in missing {
+            let result = self.embed_one(&embedder, asset_id);
+            match result {
+                Ok(vector) => {
+                    self.store
+                        .embeddings()
+                        .upsert(asset_id, &model_id, &model_version, &vector)?;
+                    if let Some(vectors) = self
+                        .vectors
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .as_mut()
+                    {
+                        vectors
+                            .index
+                            .upsert(asset_id, &vector)
+                            .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
+                    }
+                    self.store.stage_states().upsert(
+                        StageTarget::Asset(asset_id),
+                        Stage::Embedding,
+                        StageStatus::Succeeded,
+                        &format!("{model_id}@{model_version}"),
+                        None,
+                    )?;
+                    processed += 1;
+                }
+                Err(error) => {
+                    let _ = self.store.stage_states().upsert(
+                        StageTarget::Asset(asset_id),
+                        Stage::Embedding,
+                        StageStatus::Failed,
+                        &format!("{model_id}@{model_version}"),
+                        Some(&error.to_string()),
+                    );
+                }
+            }
+        }
+        Ok(processed)
+    }
+
+    fn embed_one(&self, embedder: &Arc<dyn Embedder>, asset_id: i64) -> Result<Vec<f32>> {
+        let source = self.present_source(asset_id)?.ok_or_else(|| {
+            LibraryError::InvalidInput("利用可能な画像ファイルがありません。".to_owned())
+        })?;
+        embedder
+            .embed_image(&source)
+            .map_err(|error| LibraryError::InvalidInput(error.to_string()))
+    }
+
+    fn present_source(&self, asset_id: i64) -> Result<Option<PathBuf>> {
+        for location in self.store.locations().list_for_asset(asset_id)? {
+            if location.status != LocationStatus::Present {
+                continue;
+            }
+            let root = self.store.roots().get(location.root_id)?;
+            return Ok(Some(
+                Path::new(&root.absolute_path).join(&location.relative_path),
+            ));
+        }
+        Ok(None)
+    }
+
+    /// Embeds text and returns nearest assets with cosine scores.
+    pub fn semantic_search(&self, query: &str, limit: u32) -> Result<Vec<(i64, f32)>> {
+        let embedder = self
+            .embedder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or_else(|| LibraryError::InvalidInput("埋め込みモデルが未設定です。".to_owned()))?;
+        let vector = embedder
+            .embed_text(query)
+            .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
+        self.search_vector(&vector, limit)
+    }
+
+    /// Finds assets whose stored embedding is closest to `asset_id`.
+    pub fn similar_assets(&self, asset_id: i64, limit: u32) -> Result<Vec<(i64, f32)>> {
+        let vectors = self
+            .vectors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = vectors
+            .as_ref()
+            .ok_or_else(|| LibraryError::InvalidInput("埋め込みモデルが未設定です。".to_owned()))?;
+        let embedding = self
+            .store
+            .embeddings()
+            .get(asset_id, &state.model_id, &state.model_version)?
+            .ok_or_else(|| LibraryError::InvalidInput("この画像は未処理です。".to_owned()))?;
+        state
+            .index
+            .search(&embedding.vector, limit.clamp(1, 500) as usize + 1)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .filter(|(id, _)| *id != asset_id)
+                    .take(limit as usize)
+                    .collect()
+            })
+            .map_err(|error| LibraryError::InvalidInput(error.to_string()))
+    }
+
+    fn search_vector(&self, vector: &[f32], limit: u32) -> Result<Vec<(i64, f32)>> {
+        let vectors = self
+            .vectors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = vectors
+            .as_ref()
+            .ok_or_else(|| LibraryError::InvalidInput("埋め込みモデルが未設定です。".to_owned()))?;
+        state
+            .index
+            .search(vector, limit.clamp(1, 500) as usize)
+            .map_err(|error| LibraryError::InvalidInput(error.to_string()))
     }
 
     pub fn list_albums(&self) -> Result<Vec<picker_store::AlbumWithCount>> {

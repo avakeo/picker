@@ -4,6 +4,7 @@
 
 mod albums;
 mod colors;
+mod embeddings;
 mod error;
 mod migrations;
 mod models;
@@ -14,6 +15,7 @@ use std::{path::Path, time::Duration};
 
 pub use albums::*;
 pub use colors::ColorRepository;
+pub use embeddings::EmbeddingRepository;
 pub use error::{Result, StoreError};
 pub use migrations::{LATEST_SCHEMA_VERSION, MIGRATIONS};
 pub use models::*;
@@ -113,6 +115,11 @@ impl Store {
         ColorRepository::new(&self.connection)
     }
 
+    #[must_use]
+    pub fn embeddings(&self) -> EmbeddingRepository<'_> {
+        EmbeddingRepository::new(&self.connection)
+    }
+
     /// Provides transaction access for later use-case orchestration.
     #[must_use]
     pub fn connection(&self) -> &Connection {
@@ -140,6 +147,8 @@ fn configure(connection: &Connection, require_wal: bool) -> Result<()> {
 mod album_tests;
 #[cfg(test)]
 mod color_tests;
+#[cfg(test)]
+mod embedding_tests;
 #[cfg(test)]
 mod tag_tests;
 #[cfg(test)]

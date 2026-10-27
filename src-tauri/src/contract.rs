@@ -141,6 +141,10 @@ pub fn generated_typescript() -> String {
         ModelView::decl(&config),
         ModelIdRequest::decl(&config),
         ModelProgressEvent::decl(&config),
+        EmbeddingStatusView::decl(&config),
+        EmbeddingIndexRequest::decl(&config),
+        SemanticSearchRequest::decl(&config),
+        SimilarAssetsRequest::decl(&config),
     ]
     .map(|declaration| {
         let declaration = declaration
@@ -196,6 +200,10 @@ pub fn generated_typescript() -> String {
            modelInstall: \"model_install\",
            modelActivate: \"model_activate\",
            modelRemove: \"model_remove\",
+           embeddingStatus: \"embedding_status\",
+           embeddingIndex: \"embedding_index\",
+           semanticSearch: \"semantic_search\",
+           similarAssets: \"similar_assets\",
          }} as const;\n\
          export const EVENTS = {{ indexProgressChanged: \"{}\", modelProgressChanged: \"{}\" }} as const;\n",
         declarations.join("\n\n"),
@@ -642,4 +650,42 @@ pub struct ModelProgressEvent {
     pub file_total: u64,
     pub total_downloaded: u64,
     pub total_size: u64,
+}
+
+/// Progress of the active embedding model.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct EmbeddingStatusView {
+    pub model_id: String,
+    pub model_version: String,
+    pub dimensions: u32,
+    pub indexed: u32,
+    pub missing: u32,
+}
+
+/// Request to process a bounded batch of embeddings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct EmbeddingIndexRequest {
+    pub limit: u32,
+}
+
+/// Request for a natural-language search.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct SemanticSearchRequest {
+    pub query: String,
+    pub limit: u32,
+}
+
+/// Request for similar images.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct SimilarAssetsRequest {
+    pub id: String,
+    pub limit: u32,
 }

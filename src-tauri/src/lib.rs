@@ -65,6 +65,10 @@ pub fn run() {
             commands::model_install,
             commands::model_activate,
             commands::model_remove,
+            commands::embedding_status,
+            commands::embedding_index,
+            commands::semantic_search,
+            commands::similar_assets,
         ])
         .register_uri_scheme_protocol("asset", |_context, request| {
             thumbnail_protocol::handle(request)
@@ -76,9 +80,12 @@ pub fn run() {
             fs::create_dir_all(&data_dir)?;
             let database = commands::default_database(&data_dir);
             let cache = commands::default_cache(&data_dir);
-            let library = picker_core::Library::open(&database, &cache)?;
+            let mut library = picker_core::Library::open(&database, &cache)?;
             thumbnail_protocol::set_cache_root(library.cache_root().to_path_buf());
             let models = picker_ml::ModelRegistry::open(data_dir.join("models"));
+            if let Err(error) = commands::configure_embedder(&mut library, &models) {
+                eprintln!("embedding model unavailable: {error}");
+            }
             app.manage(commands::AppState::new(library, models));
             let _core = create_core();
             Ok(())

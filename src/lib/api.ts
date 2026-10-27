@@ -16,6 +16,7 @@ import type {
   ColorView,
   AlbumView,
   ModelProgressEvent,
+  EmbeddingStatusView,
   ModelView
 } from "./generated/ui-contract";
 
@@ -90,6 +91,7 @@ export type {
   ColorView,
   ModelProgressEvent,
   ModelView,
+  EmbeddingStatusView,
   TagAliasView,
   TagView
 } from "./generated/ui-contract";
@@ -228,4 +230,20 @@ export function activateModel(id: string): Promise<void> {
 
 export function removeModel(id: string, version: string): Promise<void> {
   return invoke("model_remove", { request: { id: `${id}@${version}` } });
+}
+
+export function embeddingStatus(): Promise<EmbeddingStatusView | null> {
+  return invoke("embedding_status");
+}
+
+export function indexEmbeddings(limit: number): Promise<number> {
+  return invoke("embedding_index", { request: { limit } });
+}
+
+export function semanticSearch(query: string, limit: number): Promise<AssetSummaryView[]> {
+  return invoke("semantic_search", { request: { query, limit } });
+}
+
+export function similarAssets(id: string, limit: number): Promise<AssetSummaryView[]> {
+  return invoke("similar_assets", { request: { id, limit } });
 }

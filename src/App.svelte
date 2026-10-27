@@ -13,8 +13,10 @@
     createAlbum,
     createTag,
     deleteAlbum,
+    embeddingStatus,
     deleteTag,
     filterAssets,
+    indexEmbeddings,
     indexStatus,
     installModel,
     listAlbumAssets,
@@ -41,7 +43,9 @@
     revealAsset,
     searchAssets,
     setRootEnabled,
+    semanticSearch,
     setTagParent,
+    similarAssets,
     thumbnailUrl,
     updateViewport,
     type AssetDetailView,
@@ -49,6 +53,7 @@
     type AlbumView,
     type AssetSummaryView,
     type ColorView,
+    type EmbeddingStatusView,
     type IndexStatusView,
     type ModelProgressEvent,
     type ModelView,
@@ -57,13 +62,17 @@
     type TagView
   } from "./lib/api";
 
-  type ViewMode = "all" | "filter" | "duplicates" | "album";
+  type ViewMode = "all" | "filter" | "duplicates" | "album" | "semantic" | "similar";
   type TagMode = "all" | "any" | "none";
 
   let roots: RootView[] = [];
   let tags: TagView[] = [];
   let albums: AlbumView[] = [];
   let models: ModelView[] = [];
+  let embeddings: EmbeddingStatusView | null = null;
+  let semanticQuery = "";
+  let resultItems: AssetSummaryView[] = [];
+  let resultLabel = "";
   let modelProgress: ModelProgressEvent | null = null;
   let installingModel = "";
   let currentAlbumId = "";
@@ -135,6 +144,39 @@
     models = await listModels();
   }
 
+  async function refreshEmbeddings() {
+    embeddings = await embeddingStatus();
+  }
+
+  async function runEmbeddingBatch() {
+    await guard(async () => {
+      await indexEmbeddings(100);
+      await refreshEmbeddings();
+      await refreshStatus();
+    });
+  }
+
+  async function runSemanticSearch() {
+    const query = semanticQuery.trim();
+    if (!query) return;
+    await guard(async () => {
+      resultItems = await semanticSearch(query, 50);
+      resultLabel = `検索: ${query}`;
+      viewMode = "semantic";
+      clearSelection();
+    });
+  }
+
+  async function findSimilar() {
+    if (!detail) return;
+    await guard(async () => {
+      resultItems = await similarAssets(detail!.summary.id, 50);
+      resultLabel = "似た画像";
+      viewMode = "similar";
+      clearSelection();
+    });
+  }
+
   function modelPercent(progress: ModelProgressEvent) {
     if (progress.totalSize === 0n) return 0;
     return Math.min(
@@ -187,6 +229,14 @@
       const items = await listAlbumAssets(currentAlbumId);
       return { items, nextCursor: null, total: items.length, totalIsExact: true };
     }
+    if (viewMode === "semantic" || viewMode === "similar") {
+      return {
+        items: resultItems,
+        nextCursor: null,
+        total: resultItems.length,
+        totalIsExact: true
+      };
+    }
     if (viewMode === "filter") {
       return filterAssets(cursor, 100, filterArgs());
     }
@@ -211,6 +261,7 @@
         refreshTags(),
         refreshAlbums(),
         refreshModels(),
+        refreshEmbeddings(),
         refreshPage(true),
         refreshStatus()
       ]);
@@ -628,6 +679,18 @@
           {/if}
         </div>
       {/each}
+      {#if embeddings}
+        <div class="model">
+          <div class="muted">
+            埋め込み: {embeddings.indexed} / {embeddings.indexed + embeddings.missing} 件
+          </div>
+          {#if embeddings.missing > 0}
+            <button type="button" disabled={busy} onclick={() => void runEmbeddingBatch()}>
+              埋め込みを100件処理
+            </button>
+          {/if}
+        </div>
+      {/if}
     </section>
 
     <section class="albums">
@@ -785,6 +848,7 @@
         {viewMode === "filter" ? "(絞り込み中)" : ""}
         {viewMode === "duplicates" ? "(重複)" : ""}
         {viewMode === "album" ? `(アルバム: ${albums.find((album) => album.id === currentAlbumId)?.name ?? ""})` : ""}
+        {viewMode === "semantic" || viewMode === "similar" ? `(${resultLabel})` : ""}
       </div>
       {#if status}
         <div class="stages">
@@ -796,6 +860,10 @@
           {status.paused ? "再開" : "一時停止"}
         </button>
       {/if}
+      <form class="inline" onsubmit={(event) => { event.preventDefault(); void runSemanticSearch(); }}>
+        <input bind:value={semanticQuery} placeholder="自然言語で検索" aria-label="自然言語検索" />
+        <button type="submit" disabled={busy}>意味検索</button>
+      </form>
       {#if viewMode === "album"}
         <button type="button" disabled={busy} onclick={() => void addSelectionToCurrentAlbum()}>アルバムに追加</button>
         <button type="button" disabled={busy} onclick={() => void removeSelectionFromAlbum()}>アルバムから外す</button>
@@ -887,7 +955,11 @@
             <button type="button" onclick={beginColorEdit}>色を修正</button>
           {/if}
 
-          {#if viewMode === "album"}
+          <form class="inline" onsubmit={(event) => { event.preventDefault(); void runSemanticSearch(); }}>
+        <input bind:value={semanticQuery} placeholder="自然言語で検索" aria-label="自然言語検索" />
+        <button type="submit" disabled={busy}>意味検索</button>
+      </form>
+      {#if viewMode === "album"}
             <h2>アルバム内の位置</h2>
             <div class="inline">
               <button type="button" disabled={busy} onclick={() => void moveInAlbum(-1)}>↑ 前へ</button>

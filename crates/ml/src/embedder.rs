@@ -19,8 +19,10 @@ pub trait Embedder: Send + Sync {
     fn embed_text(&self, text: &str) -> Result<Vec<f32>, EmbeddingError>;
     /// Dimensionality of the returned vectors.
     fn dimensions(&self) -> usize;
-    /// Stable model identifier and version.
+    /// Stable model identifier.
     fn model_id(&self) -> &str;
+    /// Stable model version.
+    fn model_version(&self) -> &str;
 }
 
 #[derive(Debug)]
@@ -62,6 +64,7 @@ pub struct ClipJapanese {
     tokenizer: SentencePieceProcessor,
     dimensions: usize,
     model_id: String,
+    model_version: String,
 }
 
 impl fmt::Debug for ClipJapanese {
@@ -70,6 +73,7 @@ impl fmt::Debug for ClipJapanese {
             .debug_struct("ClipJapanese")
             .field("dimensions", &self.dimensions)
             .field("model_id", &self.model_id)
+            .field("model_version", &self.model_version)
             .finish_non_exhaustive()
     }
 }
@@ -79,6 +83,7 @@ impl ClipJapanese {
     pub fn open(
         directory: impl AsRef<Path>,
         model_id: impl Into<String>,
+        model_version: impl Into<String>,
     ) -> Result<Self, EmbeddingError> {
         let directory = directory.as_ref();
         let visual = load_session(&directory.join("clyp_visual.onnx"))?;
@@ -91,6 +96,7 @@ impl ClipJapanese {
             tokenizer,
             dimensions: 512,
             model_id: model_id.into(),
+            model_version: model_version.into(),
         })
     }
 
@@ -98,6 +104,7 @@ impl ClipJapanese {
     pub fn from_paths(
         files: &[(String, PathBuf)],
         model_id: impl Into<String>,
+        model_version: impl Into<String>,
     ) -> Result<Self, EmbeddingError> {
         let find = |name: &str| {
             files
@@ -116,6 +123,7 @@ impl ClipJapanese {
             tokenizer,
             dimensions: 512,
             model_id: model_id.into(),
+            model_version: model_version.into(),
         })
     }
 
@@ -196,6 +204,10 @@ impl Embedder for ClipJapanese {
 
     fn model_id(&self) -> &str {
         &self.model_id
+    }
+
+    fn model_version(&self) -> &str {
+        &self.model_version
     }
 }
 

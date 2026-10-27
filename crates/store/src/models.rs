@@ -346,3 +346,13 @@ pub struct AlbumItem {
     pub asset_id: i64,
     pub position: i64,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Embedding {
+    pub asset_id: i64,
+    pub model_id: String,
+    pub model_version: String,
+    pub dimensions: u32,
+    pub vector: Vec<f32>,
+    pub updated_at: i64,
+}
