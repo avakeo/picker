@@ -138,6 +138,27 @@ impl<'connection> TagRepository<'connection> {
             .map_err(StoreError::from)
     }
 
+    /// Asset ids whose tag name, alias, or display name contains `query`.
+    pub fn asset_ids_matching(&self, query: &str) -> Result<Vec<i64>> {
+        let mut statement = self.connection.prepare(
+            "SELECT DISTINCT assignments.asset_id
+             FROM tag_assignments assignments
+             JOIN tags ON tags.id = assignments.tag_id
+             LEFT JOIN tag_aliases aliases ON aliases.tag_id = tags.id
+             WHERE assignments.state IN ('suggested', 'confirmed')
+               AND (
+                 instr(lower(tags.canonical_name), lower(?1)) > 0
+                 OR instr(lower(tags.display_name_ja), lower(?1)) > 0
+                 OR instr(lower(coalesce(tags.display_name_en, '')), lower(?1)) > 0
+                 OR instr(lower(coalesce(aliases.alias, '')), lower(?1)) > 0
+               )
+             ORDER BY assignments.asset_id",
+        )?;
+        let rows = statement.query_map([query.trim()], |row| row.get(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(StoreError::from)
+    }
+
     pub fn list_with_counts(&self) -> Result<Vec<TagWithCount>> {
         let mut statement = self.connection.prepare(
             "SELECT tags.id, tags.namespace, tags.canonical_name, tags.display_name_ja,

@@ -870,8 +870,8 @@
         </button>
       {/if}
       <form class="inline" onsubmit={(event) => { event.preventDefault(); void runSemanticSearch(); }}>
-        <input bind:value={semanticQuery} placeholder="自然言語で検索" aria-label="自然言語検索" />
-        <button type="submit" disabled={busy}>意味検索</button>
+        <input bind:value={semanticQuery} placeholder="タグ名または自然言語" aria-label="自然言語検索" />
+        <button type="submit" disabled={busy}>検索</button>
       </form>
       {#if viewMode === "album"}
         <button type="button" disabled={busy} onclick={() => void addSelectionToCurrentAlbum()}>アルバムに追加</button>
@@ -965,8 +965,8 @@
           {/if}
 
           <form class="inline" onsubmit={(event) => { event.preventDefault(); void runSemanticSearch(); }}>
-        <input bind:value={semanticQuery} placeholder="自然言語で検索" aria-label="自然言語検索" />
-        <button type="submit" disabled={busy}>意味検索</button>
+        <input bind:value={semanticQuery} placeholder="タグ名または自然言語" aria-label="自然言語検索" />
+        <button type="submit" disabled={busy}>検索</button>
       </form>
       {#if viewMode === "album"}
             <h2>アルバム内の位置</h2>
