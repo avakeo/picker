@@ -3,8 +3,9 @@ use std::{path::Component, str::FromStr};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::{
-    Asset, AssetMetadata, Job, JobStatus, Location, LocationStatus, NewAsset, NewLocation, NewRoot,
-    Result, Root, RootStatus, Setting, Stage, StageState, StageStatus, StageTarget, StoreError,
+    Asset, AssetMetadata, Job, JobStatus, Location, LocationStatus, NearDuplicate, NewAsset,
+    NewLocation, NewRoot, Result, Root, RootStatus, Setting, Stage, StageState, StageStatus,
+    StageTarget, StoreError,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -194,6 +195,74 @@ impl<'connection> AssetRepository<'connection> {
             return Err(StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows));
         }
         Ok(())
+    }
+
+    /// Stores a perceptual hash and returns the updated asset.
+    pub fn set_perceptual_hash(&self, id: i64, hash: &[u8; 8]) -> Result<Asset> {
+        let changed = self.connection.execute(
+            "UPDATE assets SET perceptual_hash = ?1, updated_at = unixepoch() WHERE id = ?2",
+            params![hash.as_slice(), id],
+        )?;
+        if changed == 0 {
+            return Err(StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows));
+        }
+        self.get(id)
+    }
+
+    /// Returns assets that have more than one location (exact content duplicates).
+    pub fn exact_duplicates(&self) -> Result<Vec<Asset>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, blake3_hash, file_size, width, height, format, captured_at, perceptual_hash
+             FROM assets
+             WHERE (SELECT COUNT(*) FROM locations WHERE locations.asset_id = assets.id) > 1
+             ORDER BY id",
+        )?;
+        let ids = statement
+            .query_map([], |row| row.get::<_, i64>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        ids.into_iter().map(|id| self.get(id)).collect()
+    }
+
+    /// Returns near-duplicate pairs computed from perceptual hashes.
+    ///
+    /// The MVP uses a full scan in Rust (ADR-003) because the expected library
+    /// size makes an index unnecessary.
+    pub fn near_duplicates(&self, threshold: u32, max_pairs: usize) -> Result<Vec<NearDuplicate>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, perceptual_hash FROM assets
+             WHERE perceptual_hash IS NOT NULL ORDER BY id",
+        )?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut hashes = Vec::with_capacity(rows.len());
+        for (id, raw) in rows {
+            let hash: [u8; 8] = fixed_blob("perceptual_hash", raw)?;
+            hashes.push((id, hash));
+        }
+        let mut pairs = Vec::new();
+        'outer: for (index, (left_id, left_hash)) in hashes.iter().enumerate() {
+            for (right_id, right_hash) in &hashes[index + 1..] {
+                let distance = left_hash
+                    .iter()
+                    .zip(right_hash)
+                    .map(|(left, right)| u32::from((left ^ right).count_ones()))
+                    .sum::<u32>();
+                if distance <= threshold {
+                    pairs.push(NearDuplicate {
+                        left_asset_id: *left_id,
+                        right_asset_id: *right_id,
+                        distance,
+                    });
+                    if pairs.len() >= max_pairs {
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        Ok(pairs)
     }
 
     /// Returns the EXIF cache for an asset.
