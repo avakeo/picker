@@ -97,6 +97,12 @@ export type ReviewConfirmRequest = { tagId: string, keepAssetIds: Array<string>,
 
 export type FeedbackUndoRequest = { eventId: string, };
 
+export type PortablePathRequest = { path: string, };
+
+export type SettingRequest = { key: string, value: string, };
+
+export type SettingGetRequest = { key: string, };
+
 export type TagAliasView = { id: string, tagId: string, alias: string, };
 
 export type AssetTagView = { tagId: string, canonicalName: string, displayNameJa: string, state: string, source: string, confidence: number | null, };
@@ -171,6 +177,11 @@ export const COMMANDS = {
            reviewCandidates: "review_candidates",
            reviewConfirm: "review_confirm",
            feedbackUndo: "feedback_undo",
+           portableExport: "portable_export",
+           portableImport: "portable_import",
+           settingGet: "setting_get",
+           settingSet: "setting_set",
+           xmpExport: "xmp_export",
            tagRename: "tag_rename",
            tagDelete: "tag_delete",
            tagSetParent: "tag_set_parent",

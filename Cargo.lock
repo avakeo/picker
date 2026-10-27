@@ -2597,6 +2597,8 @@ dependencies = [
  "picker-ml",
  "picker-sidecar",
  "picker-store",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

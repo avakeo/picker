@@ -125,6 +125,9 @@ pub fn generated_typescript() -> String {
         ReviewRequest::decl(&config),
         ReviewConfirmRequest::decl(&config),
         FeedbackUndoRequest::decl(&config),
+        PortablePathRequest::decl(&config),
+        SettingRequest::decl(&config),
+        SettingGetRequest::decl(&config),
         TagAliasView::decl(&config),
         AssetTagView::decl(&config),
         TagCreateRequest::decl(&config),
@@ -187,6 +190,11 @@ pub fn generated_typescript() -> String {
            reviewCandidates: \"review_candidates\",
            reviewConfirm: \"review_confirm\",
            feedbackUndo: \"feedback_undo\",
+           portableExport: \"portable_export\",
+           portableImport: \"portable_import\",
+           settingGet: \"setting_get\",
+           settingSet: \"setting_set\",
+           xmpExport: \"xmp_export\",
            tagRename: \"tag_rename\",
            tagDelete: \"tag_delete\",
            tagSetParent: \"tag_set_parent\",
@@ -504,6 +512,31 @@ pub struct ReviewConfirmRequest {
 #[ts(rename_all = "camelCase")]
 pub struct FeedbackUndoRequest {
     pub event_id: String,
+}
+
+/// Request naming a local JSON file for export or import.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct PortablePathRequest {
+    pub path: String,
+}
+
+/// One setting value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct SettingRequest {
+    pub key: String,
+    pub value: String,
+}
+
+/// Request naming a setting to read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct SettingGetRequest {
+    pub key: String,
 }
 
 /// Request for `tag_create`.

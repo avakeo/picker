@@ -10,6 +10,7 @@ mod error;
 mod feedback;
 mod migrations;
 mod models;
+mod portable;
 mod repositories;
 mod tags;
 
@@ -23,6 +24,7 @@ pub use error::{Result, StoreError};
 pub use feedback::FeedbackRepository;
 pub use migrations::{LATEST_SCHEMA_VERSION, MIGRATIONS};
 pub use models::*;
+pub use portable::{PortableAssignment, PortableRepository};
 pub use repositories::*;
 use rusqlite::{Connection, OpenFlags};
 pub use tags::*;
@@ -65,6 +67,10 @@ impl Store {
     }
 
     #[must_use]
+    pub fn portable(&self) -> PortableRepository<'_> {
+        PortableRepository::new(&self.connection)
+    }
+
     pub fn roots(&self) -> RootRepository<'_> {
         RootRepository::new(&self.connection)
     }

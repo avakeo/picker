@@ -18,6 +18,80 @@ use picker_store::{
     LocationStatus, NewRoot, NewTag, Root, RootStatus, Stage, StageStatus, StageTarget, Store,
     StoreError, Tag, TagAlias, TagAssignment, TagOrigin, TagState,
 };
+use serde::{Deserialize, Serialize};
+
+/// Portable representation of the non-regenerable tag data.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PortableExport {
+    pub version: u32,
+    pub tags: Vec<PortableTag>,
+    pub aliases: Vec<PortableAlias>,
+    pub classifiers: Vec<PortableClassifier>,
+    pub assignments: Vec<PortableAssignmentRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PortableTag {
+    pub namespace: String,
+    pub canonical_name: String,
+    pub display_name_ja: String,
+    pub display_name_en: Option<String>,
+    pub parent_namespace: Option<String>,
+    pub parent_canonical_name: Option<String>,
+    pub color: Option<String>,
+    pub origin: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PortableAlias {
+    pub namespace: String,
+    pub canonical_name: String,
+    pub alias: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PortableClassifier {
+    pub namespace: String,
+    pub canonical_name: String,
+    pub dimensions: u32,
+    pub weights: Vec<f64>,
+    pub bias: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PortableAssignmentRecord {
+    pub blake3_hash: String,
+    pub namespace: String,
+    pub canonical_name: String,
+    pub state: String,
+    pub source: String,
+    pub confidence: Option<f64>,
+    pub model_id: Option<String>,
+    pub model_version: Option<String>,
+}
+
+fn hash_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn parse_hash(value: &str) -> Result<Vec<u8>> {
+    if value.len() != 64 {
+        return Err(LibraryError::InvalidInput("invalid BLAKE3 hash".to_owned()));
+    }
+    let mut bytes = Vec::with_capacity(32);
+    for index in (0..64).step_by(2) {
+        bytes.push(
+            u8::from_str_radix(&value[index..index + 2], 16)
+                .map_err(|_| LibraryError::InvalidInput("invalid BLAKE3 hash".to_owned()))?,
+        );
+    }
+    Ok(bytes)
+}
 
 /// Errors returned by the application-independent library service.
 #[derive(Debug)]
@@ -284,7 +358,233 @@ impl Library {
         let resolver = IdentityResolver::new(&self.store);
         let report = resolver.sync_root(root.id, &root.absolute_path)?;
         self.process_root(root.id)?;
+        for location in self.store.locations().list_for_root(root.id)? {
+            if location.status == LocationStatus::Present {
+                let asset = self.store.assets().get(location.asset_id)?;
+                self.store
+                    .portable()
+                    .apply_for_asset(asset.id, &asset.blake3_hash)?;
+            }
+        }
         Ok(report)
+    }
+
+    /// Writes confirmed tags to an XMP sidecar when enabled in settings.
+    pub fn export_xmp(&self, asset_id: i64) -> Result<usize> {
+        if self
+            .store
+            .settings()
+            .get("xmp.enabled")?
+            .is_none_or(|setting| setting.value != "true")
+        {
+            return Ok(0);
+        }
+        let Some(source) = self.present_source(asset_id)? else {
+            return Ok(0);
+        };
+        let detail = self.asset_detail(asset_id)?;
+        let mut keywords = Vec::new();
+        let mut hierarchical = Vec::new();
+        for assigned in detail.tags {
+            if assigned.assignment.state != TagState::Confirmed {
+                continue;
+            }
+            keywords.push(assigned.tag.display_name_ja.clone());
+            let mut chain = vec![assigned.tag.display_name_ja.clone()];
+            let mut parent = assigned.tag.parent_id;
+            while let Some(parent_id) = parent {
+                let tag = self.store.tags().get(parent_id)?;
+                chain.push(tag.display_name_ja);
+                parent = tag.parent_id;
+            }
+            chain.reverse();
+            hierarchical.push(chain.join("|"));
+        }
+        let sidecar = PathBuf::from(format!("{}.xmp", source.to_string_lossy()));
+        let existing = fs::read_to_string(&sidecar).ok();
+        let merged = picker_sidecar::merge(existing.as_deref(), &keywords, &hierarchical)
+            .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
+        fs::write(&sidecar, merged)?;
+        Ok(keywords.len())
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        self.store.settings().set(key, value)?;
+        Ok(())
+    }
+
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
+        Ok(self.store.settings().get(key)?.map(|setting| setting.value))
+    }
+
+    /// Writes portable tag data as JSON.
+    pub fn export_portable(&self, path: &Path) -> Result<usize> {
+        let tags = self.list_tags()?;
+        let mut portable_tags = Vec::with_capacity(tags.len());
+        let mut aliases = Vec::new();
+        for entry in &tags {
+            let parent = entry
+                .tag
+                .parent_id
+                .and_then(|parent_id| tags.iter().find(|candidate| candidate.tag.id == parent_id));
+            portable_tags.push(PortableTag {
+                namespace: entry.tag.namespace.clone(),
+                canonical_name: entry.tag.canonical_name.clone(),
+                display_name_ja: entry.tag.display_name_ja.clone(),
+                display_name_en: entry.tag.display_name_en.clone(),
+                parent_namespace: parent.map(|parent| parent.tag.namespace.clone()),
+                parent_canonical_name: parent.map(|parent| parent.tag.canonical_name.clone()),
+                color: entry.tag.color.clone(),
+                origin: entry.tag.origin.as_str().to_owned(),
+            });
+            for alias in self.tag_aliases(entry.tag.id)? {
+                aliases.push(PortableAlias {
+                    namespace: entry.tag.namespace.clone(),
+                    canonical_name: entry.tag.canonical_name.clone(),
+                    alias: alias.alias,
+                });
+            }
+        }
+        let mut classifiers = Vec::new();
+        for entry in &tags {
+            if let Some(classifier) = self.store.classifiers().get(entry.tag.id)? {
+                classifiers.push(PortableClassifier {
+                    namespace: entry.tag.namespace.clone(),
+                    canonical_name: entry.tag.canonical_name.clone(),
+                    dimensions: classifier.dimensions,
+                    weights: classifier.weights,
+                    bias: classifier.bias,
+                });
+            }
+        }
+        let assignments = self
+            .store
+            .portable()
+            .decided_assignments()?
+            .into_iter()
+            .map(|assignment| PortableAssignmentRecord {
+                blake3_hash: hash_hex(&assignment.blake3_hash),
+                namespace: assignment.namespace,
+                canonical_name: assignment.canonical_name,
+                state: assignment.state.as_str().to_owned(),
+                source: assignment.source.as_str().to_owned(),
+                confidence: assignment.confidence,
+                model_id: assignment.model_id,
+                model_version: assignment.model_version,
+            })
+            .collect();
+        let export = PortableExport {
+            version: 1,
+            tags: portable_tags,
+            aliases,
+            classifiers,
+            assignments,
+        };
+        let json = serde_json::to_vec_pretty(&export)
+            .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
+        fs::write(path, json)?;
+        Ok(export.tags.len())
+    }
+
+    /// Imports portable tag data. Assignments wait for matching content hashes.
+    pub fn import_portable(&self, path: &Path) -> Result<usize> {
+        let bytes = fs::read(path)?;
+        let export: PortableExport = serde_json::from_slice(&bytes)
+            .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
+        if export.version != 1 {
+            return Err(LibraryError::InvalidInput(
+                "unsupported export version".to_owned(),
+            ));
+        }
+        for tag in &export.tags {
+            if self
+                .store
+                .tags()
+                .find(&tag.namespace, &tag.canonical_name)?
+                .is_none()
+            {
+                let origin: TagOrigin = tag.origin.parse().unwrap_or(TagOrigin::User);
+                self.store.tags().create(&NewTag {
+                    namespace: &tag.namespace,
+                    canonical_name: &tag.canonical_name,
+                    display_name_ja: &tag.display_name_ja,
+                    display_name_en: tag.display_name_en.as_deref(),
+                    parent_id: None,
+                    color: tag.color.as_deref(),
+                    origin,
+                })?;
+            }
+        }
+        for tag in &export.tags {
+            if let (Some(namespace), Some(canonical)) =
+                (&tag.parent_namespace, &tag.parent_canonical_name)
+            {
+                let child = self
+                    .store
+                    .tags()
+                    .find(&tag.namespace, &tag.canonical_name)?;
+                let parent = self.store.tags().find(namespace, canonical)?;
+                if let (Some(child), Some(parent)) = (child, parent) {
+                    if child.parent_id.is_none() && child.id != parent.id {
+                        self.store.tags().set_parent(child.id, Some(parent.id))?;
+                    }
+                }
+            }
+        }
+        for alias in &export.aliases {
+            if let Some(tag) = self
+                .store
+                .tags()
+                .find(&alias.namespace, &alias.canonical_name)?
+            {
+                let _ = self.store.tags().add_alias(tag.id, &alias.alias);
+            }
+        }
+        for classifier in &export.classifiers {
+            if let Some(tag) = self
+                .store
+                .tags()
+                .find(&classifier.namespace, &classifier.canonical_name)?
+            {
+                self.store.classifiers().upsert(
+                    tag.id,
+                    classifier.dimensions,
+                    &classifier.weights,
+                    classifier.bias,
+                )?;
+            }
+        }
+        let mut imported = 0;
+        for assignment in &export.assignments {
+            let Some(tag) = self
+                .store
+                .tags()
+                .find(&assignment.namespace, &assignment.canonical_name)?
+            else {
+                continue;
+            };
+            let hash = parse_hash(&assignment.blake3_hash)?;
+            let state: TagState = assignment
+                .state
+                .parse()
+                .map_err(|_| LibraryError::InvalidInput("invalid assignment state".to_owned()))?;
+            let source: picker_store::AssignmentSource = assignment
+                .source
+                .parse()
+                .map_err(|_| LibraryError::InvalidInput("invalid assignment source".to_owned()))?;
+            self.store.portable().stage_assignment(
+                &hash,
+                tag.id,
+                state,
+                source,
+                assignment.confidence,
+                assignment.model_id.as_deref(),
+                assignment.model_version.as_deref(),
+            )?;
+            imported += 1;
+        }
+        self.store.portable().apply_all()?;
+        Ok(imported)
     }
 
     fn process_root(&self, root_id: i64) -> Result<usize> {
