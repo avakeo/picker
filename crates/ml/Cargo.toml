@@ -1,0 +1,6 @@
+[package]
+name = "picker-ml"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Model boundaries and registry for Picker"
