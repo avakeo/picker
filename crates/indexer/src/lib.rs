@@ -6,6 +6,9 @@ mod scanner;
 
 pub use scanner::{DiscoveredFile, ScanError, Scanner};
 
+mod identity;
+pub use identity::{IdentityError, IdentityReport, IdentityResolver};
+
 /// Placeholder for the persistent job queue introduced in T1-5.
 #[derive(Debug, Default)]
 pub struct Indexer;
