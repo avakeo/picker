@@ -62,6 +62,8 @@ Apple M5 / 16 GB / macOS 26.6.2 / arm64で、`eval-data/images` の50枚、各5�
 
 ## 提案
 
+**仮決定（DeepSeek、2026-10-27）**: 提案どおり embedded-preferred を第一候補とし、なければ ImageIO のサムネイル生成を使う。Linux コンテナでは Rust のフォールバック実装で JPEG・PNG・WebP を扱い、HEIC は非対応エラーとする。ADR の状態は提案のままとする。
+
 提案: macOSでは `embedded-preferred` を第一候補とし、埋め込みサムネイルがない場合は `imageio-thumbnail` へfallbackする。全体デコード後の縮小は、ImageIOサムネイル生成が失敗した場合の最後の診断用fallbackに限定する。Rust側はこの方式をデコーダトレイトの背後に置き、非macOSでは別実装へ差し替える。採用の決定は人間が行う。
 
 ## ライセンス・参照情報
