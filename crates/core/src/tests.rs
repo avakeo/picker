@@ -183,3 +183,32 @@ fn tag_hierarchy_and_alias_errors_are_typed() {
         .set_tag_on_assets(&[999], child.id, picker_store::TagState::Confirmed)
         .is_err());
 }
+
+#[test]
+fn extracts_and_manually_overrides_colors() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(30)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let asset = library.asset_page(0, 10).expect("page").items[0].id;
+    let detail = library.asset_detail(asset).expect("detail");
+    assert_eq!(detail.colors.len(), 1);
+    assert_eq!(detail.colors[0].source, picker_store::ColorSource::Auto);
+
+    library
+        .set_asset_colors(asset, &[("#010203".to_owned(), 1.0)])
+        .expect("manual");
+    let detail = library.asset_detail(asset).expect("detail");
+    assert_eq!(detail.colors[0].hex, "#010203");
+    assert_eq!(detail.colors[0].source, picker_store::ColorSource::User);
+
+    let reset = library.reset_asset_colors(asset).expect("reset");
+    assert_eq!(reset.len(), 1);
+    assert_eq!(reset[0].source, picker_store::ColorSource::Auto);
+    assert_ne!(reset[0].hex, "#010203");
+    assert!(library
+        .set_asset_colors(asset, &[("not-hex".to_owned(), 1.0)])
+        .is_err());
+}

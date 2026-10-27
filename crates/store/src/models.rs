@@ -304,3 +304,18 @@ pub struct AssetFilter {
     pub captured_from: Option<i64>,
     pub captured_to: Option<i64>,
 }
+
+string_enum!(ColorSource {
+    Auto => "auto",
+    User => "user",
+});
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssetColor {
+    pub asset_id: i64,
+    pub rank: u8,
+    pub hex: String,
+    pub ratio: f64,
+    pub source: ColorSource,
+    pub algorithm_version: String,
+}

@@ -2,6 +2,7 @@
 
 //! Image decoding, metadata, thumbnails, and perceptual hashes for Picker.
 
+mod color;
 mod decode;
 mod error;
 mod format;
@@ -13,6 +14,7 @@ mod thumbnail;
 #[cfg(test)]
 mod tests;
 
+pub use color::{extract_colors, ExtractedColor};
 pub use decode::{thumbnail_path, DecodedImage, Decoder, PlatformDecoder, RustFallbackDecoder};
 pub use error::{ImagingError, Result};
 pub use format::ImageFormat;

@@ -2,6 +2,7 @@
 
 //! SQLite persistence boundary for Picker.
 
+mod colors;
 mod error;
 mod migrations;
 mod models;
@@ -10,6 +11,7 @@ mod tags;
 
 use std::{path::Path, time::Duration};
 
+pub use colors::ColorRepository;
 pub use error::{Result, StoreError};
 pub use migrations::{LATEST_SCHEMA_VERSION, MIGRATIONS};
 pub use models::*;
@@ -99,6 +101,11 @@ impl Store {
         AssetFilterRepository::new(&self.connection)
     }
 
+    #[must_use]
+    pub fn colors(&self) -> ColorRepository<'_> {
+        ColorRepository::new(&self.connection)
+    }
+
     /// Provides transaction access for later use-case orchestration.
     #[must_use]
     pub fn connection(&self) -> &Connection {
@@ -122,6 +129,8 @@ fn configure(connection: &Connection, require_wal: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod color_tests;
 #[cfg(test)]
 mod tag_tests;
 #[cfg(test)]

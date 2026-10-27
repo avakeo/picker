@@ -4,14 +4,14 @@ use std::{
 };
 
 use picker_imaging::{
-    dhash, extract, Decoder, ImageFormat, ImagingError, PlatformDecoder, RustFallbackDecoder,
-    ThumbnailSize,
+    dhash, extract, extract_colors, Decoder, ImageFormat, ImagingError, PlatformDecoder,
+    RustFallbackDecoder, ThumbnailSize,
 };
 use picker_indexer::{IdentityReport, IdentityResolver};
 use picker_store::{
-    Asset, AssetFilter, AssetMetadata, Location, LocationStatus, NewRoot, NewTag, Root, RootStatus,
-    Stage, StageStatus, StageTarget, Store, StoreError, Tag, TagAlias, TagAssignment, TagOrigin,
-    TagState,
+    Asset, AssetColor, AssetFilter, AssetMetadata, Location, LocationStatus, NewRoot, NewTag, Root,
+    RootStatus, Stage, StageStatus, StageTarget, Store, StoreError, Tag, TagAlias, TagAssignment,
+    TagOrigin, TagState,
 };
 
 /// Errors returned by the application-independent library service.
@@ -114,6 +114,7 @@ pub struct AssetDetail {
     pub locations: Vec<LocationView>,
     pub metadata: Option<AssetMetadata>,
     pub tags: Vec<AssetTag>,
+    pub colors: Vec<AssetColor>,
 }
 
 /// Root information for the folder tree.
@@ -287,6 +288,14 @@ impl Library {
         self.store
             .assets()
             .set_perceptual_hash(asset_id, &dhash(&decoded))?;
+        let extracted = extract_colors(&decoded);
+        let colors = extracted
+            .into_iter()
+            .map(|color| (color.hex, color.ratio))
+            .collect::<Vec<_>>();
+        self.store
+            .colors()
+            .set_auto(asset_id, &colors, "lab-kmeans-v1")?;
         let metadata = extract(&RustFallbackDecoder, source, format, &limits)?;
         self.store.assets().set_metadata(&AssetMetadata {
             asset_id,
@@ -347,7 +356,44 @@ impl Library {
             locations,
             metadata: self.store.assets().metadata(asset_id)?,
             tags,
+            colors: self.store.colors().list(asset_id)?,
         })
+    }
+
+    pub fn set_asset_colors(
+        &self,
+        asset_id: i64,
+        colors: &[(String, f64)],
+    ) -> Result<Vec<AssetColor>> {
+        Ok(self.store.colors().set_user(asset_id, colors)?)
+    }
+
+    /// Removes the manual override and recomputes colors from a present location.
+    pub fn reset_asset_colors(&self, asset_id: i64) -> Result<Vec<AssetColor>> {
+        self.store.colors().clear_manual(asset_id)?;
+        let locations = self.store.locations().list_for_asset(asset_id)?;
+        for location in locations {
+            if location.status != LocationStatus::Present {
+                continue;
+            }
+            let root = self.store.roots().get(location.root_id)?;
+            let source = Path::new(&root.absolute_path).join(&location.relative_path);
+            let Some(format) = ImageFormat::from_path(&source) else {
+                continue;
+            };
+            let limits = picker_imaging::DecodeLimits::default();
+            if let Ok(decoded) = RustFallbackDecoder.decode_file(&source, format, &limits) {
+                let colors = extract_colors(&decoded)
+                    .into_iter()
+                    .map(|color| (color.hex, color.ratio))
+                    .collect::<Vec<_>>();
+                self.store
+                    .colors()
+                    .set_auto(asset_id, &colors, "lab-kmeans-v1")?;
+                break;
+            }
+        }
+        Ok(self.store.colors().list(asset_id)?)
     }
 
     pub fn list_tags(&self) -> Result<Vec<picker_store::TagWithCount>> {

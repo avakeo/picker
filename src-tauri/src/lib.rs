@@ -51,6 +51,8 @@ pub fn run() {
             commands::tag_remove,
             commands::asset_filter,
             commands::duplicates_list,
+            commands::color_set,
+            commands::color_reset,
         ])
         .register_uri_scheme_protocol("asset", |_context, request| {
             thumbnail_protocol::handle(request)
