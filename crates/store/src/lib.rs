@@ -3,6 +3,7 @@
 //! SQLite persistence boundary for Picker.
 
 mod albums;
+mod classifiers;
 mod colors;
 mod embeddings;
 mod error;
@@ -15,6 +16,7 @@ mod tags;
 use std::{path::Path, time::Duration};
 
 pub use albums::*;
+pub use classifiers::ClassifierRepository;
 pub use colors::ColorRepository;
 pub use embeddings::EmbeddingRepository;
 pub use error::{Result, StoreError};
@@ -113,6 +115,10 @@ impl Store {
     }
 
     #[must_use]
+    pub fn classifiers(&self) -> ClassifierRepository<'_> {
+        ClassifierRepository::new(&self.connection)
+    }
+
     pub fn colors(&self) -> ColorRepository<'_> {
         ColorRepository::new(&self.connection)
     }
@@ -151,6 +157,8 @@ fn configure(connection: &Connection, require_wal: bool) -> Result<()> {
 
 #[cfg(test)]
 mod album_tests;
+#[cfg(test)]
+mod classifier_tests;
 #[cfg(test)]
 mod color_tests;
 #[cfg(test)]

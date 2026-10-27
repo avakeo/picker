@@ -89,6 +89,14 @@ export type TagIdRequest = { id: string, };
 
 export type CustomSuggestRequest = { tagId: string, limit: number, };
 
+export type CustomTrainRequest = { tagId: string, };
+
+export type ReviewRequest = { tagId: string, limit: number, highRatio: number, };
+
+export type ReviewConfirmRequest = { tagId: string, keepAssetIds: Array<string>, rejectAssetIds: Array<string>, };
+
+export type FeedbackUndoRequest = { eventId: string, };
+
 export type TagAliasView = { id: string, tagId: string, alias: string, };
 
 export type AssetTagView = { tagId: string, canonicalName: string, displayNameJa: string, state: string, source: string, confidence: number | null, };
@@ -159,6 +167,10 @@ export const COMMANDS = {
            tagCreate: "tag_create",
            tagConvertToCustom: "tag_convert_to_custom",
            customSuggest: "custom_suggest",
+           customTrain: "custom_train",
+           reviewCandidates: "review_candidates",
+           reviewConfirm: "review_confirm",
+           feedbackUndo: "feedback_undo",
            tagRename: "tag_rename",
            tagDelete: "tag_delete",
            tagSetParent: "tag_set_parent",
