@@ -408,3 +408,59 @@ fn zero_shot_suggestions_never_replace_rejected_tags() {
         .expect("assignment");
     assert_eq!(state.state, picker_store::TagState::Rejected);
 }
+
+#[test]
+fn feedback_events_record_decisions_and_can_be_undone() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let asset_id = library.asset_page(0, 10).expect("page").items[0].id;
+    let tag = library.create_tag("cat", "猫", None, None).expect("tag");
+    library
+        .store()
+        .tag_assignments()
+        .upsert_suggested(
+            asset_id,
+            tag.id,
+            picker_store::AssignmentSource::ZeroShot,
+            0.81,
+            "clip",
+            "v1",
+        )
+        .expect("suggest");
+    library
+        .set_tag_on_assets(&[asset_id], tag.id, picker_store::TagState::Confirmed)
+        .expect("confirm");
+    let events = library
+        .store()
+        .feedback()
+        .list_for_asset(asset_id)
+        .expect("events");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].action, picker_store::FeedbackAction::Approved);
+    assert_eq!(events[0].confidence, Some(0.81));
+    library.undo_feedback(events[0].id).expect("undo");
+    let restored = library
+        .store()
+        .tag_assignments()
+        .get(asset_id, tag.id)
+        .expect("restored");
+    assert_eq!(restored.state, picker_store::TagState::Suggested);
+    assert_eq!(restored.confidence, Some(0.81));
+
+    library
+        .set_tag_on_assets(&[asset_id], tag.id, picker_store::TagState::Confirmed)
+        .expect("confirm again");
+    library
+        .remove_tag_from_assets(&[asset_id], tag.id)
+        .expect("remove user");
+    assert!(library
+        .store()
+        .tag_assignments()
+        .get_optional(asset_id, tag.id)
+        .expect("optional")
+        .is_none());
+}

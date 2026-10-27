@@ -42,9 +42,14 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "embeddings",
         sql: include_str!("../migrations/0006_embeddings.sql"),
     },
+    Migration {
+        version: 7,
+        name: "feedback_events",
+        sql: include_str!("../migrations/0007_feedback_events.sql"),
+    },
 ];
 
-pub const LATEST_SCHEMA_VERSION: u32 = 6;
+pub const LATEST_SCHEMA_VERSION: u32 = 7;
 
 pub(crate) fn migrate(connection: &Connection) -> Result<()> {
     connection.execute_batch(

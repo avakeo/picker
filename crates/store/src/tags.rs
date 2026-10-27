@@ -496,6 +496,40 @@ impl<'connection> TagAssignmentRepository<'connection> {
         Ok(updated)
     }
 
+    /// Restores the assignment snapshot stored on a feedback event.
+    pub fn restore(&self, asset_id: i64, tag_id: i64, event: &crate::FeedbackEvent) -> Result<()> {
+        let Some(state) = event.previous_state else {
+            self.connection.execute(
+                "DELETE FROM tag_assignments WHERE asset_id = ?1 AND tag_id = ?2",
+                params![asset_id, tag_id],
+            )?;
+            return Ok(());
+        };
+        let source = event.previous_source.unwrap_or(AssignmentSource::User);
+        self.connection.execute(
+            "INSERT INTO tag_assignments
+                (asset_id, tag_id, state, source, confidence, model_id, model_version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT (asset_id, tag_id) DO UPDATE SET
+                 state = excluded.state,
+                 source = excluded.source,
+                 confidence = excluded.confidence,
+                 model_id = excluded.model_id,
+                 model_version = excluded.model_version,
+                 updated_at = unixepoch()",
+            params![
+                asset_id,
+                tag_id,
+                state.as_str(),
+                source.as_str(),
+                event.previous_confidence,
+                event.previous_model_id,
+                event.previous_model_version
+            ],
+        )?;
+        Ok(())
+    }
+
     /// Removes a user assignment from several assets atomically.
     pub fn remove_user_many(&self, asset_ids: &[i64], tag_id: i64) -> Result<usize> {
         let transaction = self.connection.unchecked_transaction()?;
