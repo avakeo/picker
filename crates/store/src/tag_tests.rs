@@ -129,6 +129,8 @@ fn suggestions_replace_only_the_same_source() -> Result<()> {
     store.tag_assignments().replace_suggestions(
         assets[0].id,
         AssignmentSource::ZeroShot,
+        "clip-japanese",
+        "v1",
         &[(tag.id, 0.9)],
     )?;
     assert_eq!(

@@ -9,7 +9,7 @@ use picker_imaging::{
     RustFallbackDecoder, ThumbnailSize,
 };
 use picker_indexer::{IdentityReport, IdentityResolver};
-use picker_ml::{BruteForceIndex, Embedder, VectorIndex};
+use picker_ml::{BruteForceIndex, Embedder, Tagger, VectorIndex, ZeroShotTagger};
 use picker_store::{
     Asset, AssetColor, AssetFilter, AssetMetadata, Location, LocationStatus, NewRoot, NewTag, Root,
     RootStatus, Stage, StageStatus, StageTarget, Store, StoreError, Tag, TagAlias, TagAssignment,
@@ -159,12 +159,20 @@ pub struct Library {
     cache_root: PathBuf,
     embedder: Mutex<Option<Arc<dyn Embedder>>>,
     vectors: Mutex<Option<VectorState>>,
+    tagger: Mutex<Option<Arc<TaggerState>>>,
 }
 
 struct VectorState {
     model_id: String,
     model_version: String,
     index: BruteForceIndex,
+}
+
+struct TaggerState {
+    model_id: String,
+    model_version: String,
+    tagger: ZeroShotTagger,
+    tag_ids: std::collections::HashMap<String, i64>,
 }
 
 impl fmt::Debug for Library {
@@ -191,6 +199,7 @@ impl Library {
             cache_root,
             embedder: Mutex::new(None),
             vectors: Mutex::new(None),
+            tagger: Mutex::new(None),
         })
     }
 
@@ -203,6 +212,7 @@ impl Library {
             cache_root,
             embedder: Mutex::new(None),
             vectors: Mutex::new(None),
+            tagger: Mutex::new(None),
         })
     }
 
@@ -592,6 +602,119 @@ impl Library {
     }
 
     /// Embeds text and returns nearest assets with cosine scores.
+    /// Adds `zero_shot` suggestions for assets that still need auto-tagging.
+    pub fn auto_tag(&self, limit: u32) -> Result<usize> {
+        const STAGE_VERSION: &str = "zero-shot-v1";
+        let state = self.ensure_tagger()?;
+        let Some(state) = state else {
+            return Err(LibraryError::InvalidInput(
+                "埋め込みモデルが未設定です。".to_owned(),
+            ));
+        };
+        let asset_ids = self.store.embeddings().missing_auto_tag(
+            &state.model_id,
+            &state.model_version,
+            STAGE_VERSION,
+            limit.clamp(1, 500),
+        )?;
+        let mut suggested = 0;
+        for asset_id in asset_ids {
+            let embedding =
+                self.store
+                    .embeddings()
+                    .get(asset_id, &state.model_id, &state.model_version)?;
+            let Some(embedding) = embedding else {
+                continue;
+            };
+            match state.tagger.suggest(&embedding.vector) {
+                Ok(suggestions) => {
+                    let mapped: Vec<(i64, f64)> = suggestions
+                        .into_iter()
+                        .filter_map(|suggestion| {
+                            state
+                                .tag_ids
+                                .get(&suggestion.tag_id)
+                                .map(|tag_id| (*tag_id, suggestion.confidence))
+                        })
+                        .collect();
+                    self.store.tag_assignments().replace_suggestions(
+                        asset_id,
+                        picker_store::AssignmentSource::ZeroShot,
+                        &state.model_id,
+                        &state.model_version,
+                        &mapped,
+                    )?;
+                    suggested += mapped.len();
+                    self.store.stage_states().upsert(
+                        StageTarget::Asset(asset_id),
+                        Stage::AutoTag,
+                        StageStatus::Succeeded,
+                        STAGE_VERSION,
+                        None,
+                    )?;
+                }
+                Err(error) => {
+                    self.store.stage_states().upsert(
+                        StageTarget::Asset(asset_id),
+                        Stage::AutoTag,
+                        StageStatus::Failed,
+                        STAGE_VERSION,
+                        Some(&error.to_string()),
+                    )?;
+                }
+            }
+        }
+        Ok(suggested)
+    }
+
+    fn ensure_tagger(&self) -> Result<Option<Arc<TaggerState>>> {
+        let embedder = self
+            .embedder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or_else(|| LibraryError::InvalidInput("埋め込みモデルが未設定です。".to_owned()))?;
+        let mut cached = self
+            .tagger
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(state) = cached.as_ref() {
+            if state.model_id == embedder.model_id()
+                && state.model_version == embedder.model_version()
+            {
+                return Ok(Some(Arc::clone(state)));
+            }
+        }
+        let vocabulary = ZeroShotTagger::vocabulary()
+            .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
+        let mut tag_ids = std::collections::HashMap::with_capacity(vocabulary.len());
+        for entry in &vocabulary {
+            let tag = match self.store.tags().find("general", &entry.id)? {
+                Some(tag) => tag,
+                None => self.store.tags().create(&NewTag {
+                    namespace: "general",
+                    canonical_name: &entry.id,
+                    display_name_ja: &entry.display_name_ja,
+                    display_name_en: Some(&entry.display_name_en),
+                    parent_id: None,
+                    color: None,
+                    origin: TagOrigin::ZeroShot,
+                })?,
+            };
+            tag_ids.insert(entry.id.clone(), tag.id);
+        }
+        let tagger = ZeroShotTagger::new(embedder.as_ref(), vocabulary)
+            .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
+        let state = Arc::new(TaggerState {
+            model_id: embedder.model_id().to_owned(),
+            model_version: embedder.model_version().to_owned(),
+            tagger,
+            tag_ids,
+        });
+        *cached = Some(Arc::clone(&state));
+        Ok(Some(state))
+    }
+
     /// Searches tag names first, then ranks the remaining assets semantically.
     pub fn search_text(&self, query: &str, limit: u32) -> Result<Vec<(i64, f32)>> {
         let limit = limit.clamp(1, 500) as usize;

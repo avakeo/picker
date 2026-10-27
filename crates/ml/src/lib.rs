@@ -4,9 +4,11 @@
 
 mod embedder;
 mod registry;
+mod tagger;
 mod vector;
 
 pub use embedder::{ClipJapanese, Embedder, EmbeddingError};
+pub use tagger::{TagSuggestion, Tagger, ZeroShotTag, ZeroShotTagger};
 
 pub use vector::{BruteForceIndex, VectorError, VectorIndex};
 

@@ -106,6 +106,33 @@ impl<'connection> EmbeddingRepository<'connection> {
             .map_err(StoreError::from)
     }
 
+    /// Assets with an embedding whose auto-tag stage is not current.
+    pub fn missing_auto_tag(
+        &self,
+        model_id: &str,
+        model_version: &str,
+        stage_version: &str,
+        limit: u32,
+    ) -> Result<Vec<i64>> {
+        let mut statement = self.connection.prepare(
+            "SELECT embeddings.asset_id
+             FROM embeddings
+             LEFT JOIN stage_states ON stage_states.asset_id = embeddings.asset_id
+               AND stage_states.stage = 'auto_tag'
+             WHERE embeddings.model_id = ?1 AND embeddings.model_version = ?2
+               AND (stage_states.id IS NULL
+                    OR stage_states.status != 'succeeded'
+                    OR stage_states.version != ?3)
+             ORDER BY embeddings.asset_id LIMIT ?4",
+        )?;
+        let rows = statement.query_map(
+            params![model_id, model_version, stage_version, limit],
+            |row| row.get(0),
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(StoreError::from)
+    }
+
     pub fn count_missing(&self, model_id: &str, model_version: &str) -> Result<u32> {
         Ok(self.connection.query_row(
             "SELECT COUNT(*) FROM assets a

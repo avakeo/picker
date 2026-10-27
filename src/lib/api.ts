@@ -247,3 +247,11 @@ export function semanticSearch(query: string, limit: number): Promise<AssetSumma
 export function similarAssets(id: string, limit: number): Promise<AssetSummaryView[]> {
   return invoke("similar_assets", { request: { id, limit } });
 }
+
+export function rejectTag(assetIds: string[], tagId: string): Promise<number> {
+  return invoke("tag_reject", { request: { assetIds, tagId } });
+}
+
+export function autoTag(limit: number): Promise<number> {
+  return invoke("auto_tag", { request: { limit } });
+}

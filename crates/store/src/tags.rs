@@ -58,6 +58,19 @@ impl<'connection> TagRepository<'connection> {
         Self { connection }
     }
 
+    pub fn find(&self, namespace: &str, canonical_name: &str) -> Result<Option<Tag>> {
+        self.connection
+            .query_row(
+                "SELECT id, namespace, canonical_name, display_name_ja, display_name_en,
+                        parent_id, color, origin
+                 FROM tags WHERE namespace = ?1 AND canonical_name = ?2",
+                params![namespace, canonical_name],
+                tag_from_row,
+            )
+            .optional()
+            .map_err(StoreError::from)
+    }
+
     pub fn create(&self, tag: &NewTag<'_>) -> Result<Tag> {
         validate_nonempty("canonical_name", tag.canonical_name)?;
         validate_nonempty("display_name_ja", tag.display_name_ja)?;
@@ -560,6 +573,8 @@ impl<'connection> TagAssignmentRepository<'connection> {
         &self,
         asset_id: i64,
         source: AssignmentSource,
+        model_id: &str,
+        model_version: &str,
         suggestions: &[(i64, f64)],
     ) -> Result<()> {
         if source == AssignmentSource::User {
@@ -584,9 +599,16 @@ impl<'connection> TagAssignmentRepository<'connection> {
             transaction.execute(
                 "INSERT INTO tag_assignments
                     (asset_id, tag_id, state, source, confidence, model_id, model_version)
-                 VALUES (?1, ?2, 'suggested', ?3, ?4, 'replace_suggestions', '1')
+                 VALUES (?1, ?2, 'suggested', ?3, ?4, ?5, ?6)
                  ON CONFLICT (asset_id, tag_id) DO NOTHING",
-                params![asset_id, tag_id, source.as_str(), confidence],
+                params![
+                    asset_id,
+                    tag_id,
+                    source.as_str(),
+                    confidence,
+                    model_id,
+                    model_version
+                ],
             )?;
         }
         transaction.commit()?;
