@@ -2,10 +2,17 @@
 
 //! Domain and use-case layer for the Picker application.
 
+mod library;
+
+#[cfg(test)]
+mod tests;
+
+pub use library::{
+    AssetDetail, AssetPage, AssetSummary, IndexStatus, Library, LibraryError, LocationView, Result,
+    RootSummary, StageProgress, ThumbnailState,
+};
+
 /// Entry point for application-independent core services.
-///
-/// The implementation is intentionally empty in T0-1. Later milestones add
-/// domain models and use cases without coupling them to the Tauri app.
 #[derive(Debug, Default)]
 pub struct Core;
 

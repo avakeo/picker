@@ -2374,10 +2374,12 @@ name = "picker-app"
 version = "0.1.0"
 dependencies = [
  "picker-core",
+ "picker-store",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tempfile",
  "ts-rs",
 ]
 
@@ -2385,6 +2387,7 @@ dependencies = [
 name = "picker-core"
 version = "0.1.0"
 dependencies = [
+ "image",
  "picker-fswatch",
  "picker-imaging",
  "picker-indexer",
@@ -2392,6 +2395,7 @@ dependencies = [
  "picker-ml",
  "picker-sidecar",
  "picker-store",
+ "tempfile",
 ]
 
 [[package]]

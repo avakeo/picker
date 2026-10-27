@@ -1,6 +1,17 @@
+use std::{
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
+
 use tauri::http::{header, Method, Request, Response, StatusCode};
 
 const MAX_ASSET_ID_LEN: usize = 128;
+static CACHE_ROOT: OnceLock<PathBuf> = OnceLock::new();
+
+/// Sets the process-wide thumbnail cache root used by the custom protocol.
+pub fn set_cache_root(root: PathBuf) {
+    let _ = CACHE_ROOT.set(root);
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ThumbnailSize {
@@ -70,9 +81,21 @@ fn placeholder_svg(request: &ThumbnailRequest<'_>) -> Vec<u8> {
     .into_bytes()
 }
 
+/// Handles a protocol request using the process-wide cache root.
 pub fn handle(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
+    handle_with_cache(request, CACHE_ROOT.get().map(PathBuf::as_path))
+}
+
+/// Handles a protocol request using an explicit cache root.
+pub fn handle_with_cache(
+    request: Request<Vec<u8>>,
+    cache_root: Option<&Path>,
+) -> Response<Vec<u8>> {
     match parse_request(&request) {
-        Ok(parsed) => response(StatusCode::OK, "image/svg+xml", placeholder_svg(&parsed)),
+        Ok(parsed) => match cache_root.and_then(|root| cached_thumbnail(root, &parsed)) {
+            Some(bytes) => response(StatusCode::OK, "image/png", bytes),
+            None => response(StatusCode::OK, "image/svg+xml", placeholder_svg(&parsed)),
+        },
         Err(ProtocolError::MethodNotAllowed) => response(
             StatusCode::METHOD_NOT_ALLOWED,
             "text/plain; charset=utf-8",
@@ -84,6 +107,18 @@ pub fn handle(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
             b"invalid thumbnail request".to_vec(),
         ),
     }
+}
+
+fn cached_thumbnail(root: &Path, request: &ThumbnailRequest<'_>) -> Option<Vec<u8>> {
+    let asset_id = request.asset_id.parse::<i64>().ok()?;
+    if asset_id <= 0 {
+        return None;
+    }
+    let edge = match request.size {
+        ThumbnailSize::Grid => 512,
+        ThumbnailSize::Detail => 2048,
+    };
+    std::fs::read(root.join(edge.to_string()).join(format!("{asset_id}.png"))).ok()
 }
 
 #[cfg(test)]
@@ -150,6 +185,46 @@ mod tests {
             .body(Vec::new())
             .unwrap();
         assert_eq!(parse_request(&post), Err(ProtocolError::MethodNotAllowed));
+    }
+
+    #[test]
+    fn serves_cached_pngs_and_falls_back_to_a_placeholder() {
+        let cache = tempfile::tempdir().unwrap();
+        let grid = cache.path().join("512");
+        std::fs::create_dir_all(&grid).unwrap();
+        std::fs::write(grid.join("42.png"), b"png-bytes").unwrap();
+
+        let hit = handle_with_cache(
+            request("asset://localhost/thumbnail/42?size=grid"),
+            Some(cache.path()),
+        );
+        assert_eq!(hit.status(), StatusCode::OK);
+        assert_eq!(hit.headers()[header::CONTENT_TYPE], "image/png");
+        assert_eq!(hit.body(), b"png-bytes");
+
+        let miss = handle_with_cache(
+            request("asset://localhost/thumbnail/43?size=grid"),
+            Some(cache.path()),
+        );
+        assert_eq!(miss.headers()[header::CONTENT_TYPE], "image/svg+xml");
+
+        let detail = handle_with_cache(
+            request("asset://localhost/thumbnail/42?size=detail"),
+            Some(cache.path()),
+        );
+        assert_eq!(detail.headers()[header::CONTENT_TYPE], "image/svg+xml");
+    }
+
+    #[test]
+    fn cached_lookup_rejects_non_numeric_ids() {
+        let cache = tempfile::tempdir().unwrap();
+        for id in ["-1", "0", "42.0", "9223372036854775808"] {
+            let result = handle_with_cache(
+                request(&format!("asset://localhost/thumbnail/{id}?size=grid")),
+                Some(cache.path()),
+            );
+            assert_ne!(result.headers()[header::CONTENT_TYPE], "image/png");
+        }
     }
 
     #[test]

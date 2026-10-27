@@ -158,6 +158,26 @@ impl<'connection> AssetRepository<'connection> {
         })
     }
 
+    /// Returns a page of assets ordered by id after the given cursor.
+    pub fn page(&self, after_id: i64, limit: u32) -> Result<Vec<Asset>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id FROM assets WHERE id > ?1 ORDER BY id LIMIT ?2")?;
+        let ids = statement
+            .query_map(params![after_id, limit], |row| row.get::<_, i64>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        ids.into_iter().map(|id| self.get(id)).collect()
+    }
+
+    /// Returns the total number of assets.
+    pub fn count(&self) -> Result<u32> {
+        Ok(self
+            .connection
+            .query_row("SELECT COUNT(*) FROM assets", [], |row| {
+                row.get::<_, u32>(0)
+            })?)
+    }
+
     pub fn find_by_hash(&self, hash: &[u8; 32]) -> Result<Option<Asset>> {
         let id = self
             .connection
@@ -361,6 +381,19 @@ impl<'connection> LocationRepository<'connection> {
         id.map(|id| self.get(id)).transpose()
     }
 
+    /// Returns all locations for an asset, including missing and offline ones.
+    pub fn list_for_asset(&self, asset_id: i64) -> Result<Vec<Location>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id FROM locations WHERE asset_id = ?1 ORDER BY id")?;
+        let ids = statement.query_map([asset_id], |row| row.get::<_, i64>(0))?;
+        let mut locations = Vec::new();
+        for id in ids {
+            locations.push(self.get(id?)?);
+        }
+        Ok(locations)
+    }
+
     pub fn list_for_root(&self, root_id: i64) -> Result<Vec<Location>> {
         let mut statement = self
             .connection
@@ -447,6 +480,26 @@ impl<'connection> StageStateRepository<'connection> {
                 field: "stage_state",
                 value: "upserted row was not found".to_owned(),
             })
+    }
+
+    /// Returns counts grouped by stage and status for the progress UI.
+    pub fn counts(&self) -> Result<Vec<(Stage, StageStatus, u32)>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT stage, status, COUNT(*) FROM stage_states GROUP BY stage, status")?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, u32>(2)?,
+            ))
+        })?;
+        let mut counts = Vec::new();
+        for row in rows {
+            let (stage, status, count) = row?;
+            counts.push((stage.parse()?, status.parse()?, count));
+        }
+        Ok(counts)
     }
 
     pub fn get(&self, target: StageTarget, stage: Stage) -> Result<Option<StageState>> {
@@ -540,6 +593,28 @@ impl<'connection> JobRepository<'connection> {
             created_at: raw.9,
             updated_at: raw.10,
         })
+    }
+
+    /// Returns whether at least one job is paused.
+    pub fn has_paused(&self) -> Result<bool> {
+        Ok(self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM jobs WHERE status = 'paused')",
+            [],
+            |row| row.get(0),
+        )?)
+    }
+
+    /// Raises the priority of all queued jobs for the given assets.
+    pub fn set_priority_for_assets(&self, asset_ids: &[i64], priority: i64) -> Result<usize> {
+        let mut updated = 0;
+        for asset_id in asset_ids {
+            updated += self.connection.execute(
+                "UPDATE jobs SET priority = ?1, updated_at = unixepoch()
+                 WHERE asset_id = ?2 AND status IN ('pending', 'paused')",
+                params![priority, asset_id],
+            )?;
+        }
+        Ok(updated)
     }
 
     pub fn dequeue(&self, stage: Option<Stage>) -> Result<Option<Job>> {

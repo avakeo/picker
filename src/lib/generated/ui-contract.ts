@@ -55,5 +55,47 @@ stages: Array<IndexStageProgress>,
  */
 paused: boolean, };
 
-export const COMMANDS = { getAppInfo: "get_app_info" } as const;
+export type RootView = { id: string, path: string, displayName: string, enabled: boolean, online: boolean, imageCount: number, };
+
+export type AssetSummaryView = { id: string, width: number | null, height: number | null, format: string | null, capturedAt: bigint | null, thumbnailState: string, locationStatus: string, };
+
+export type AssetPageView = { items: Array<AssetSummaryView>, nextCursor: string | null, total: number, totalIsExact: boolean, };
+
+export type LocationView = { id: string, rootId: string, relativePath: string, absolutePath: string, status: string, };
+
+export type AssetMetadataView = { cameraMake: string | null, cameraModel: string | null, lens: string | null, exposureTime: string | null, fNumber: number | null, iso: number | null, focalLengthMm: number | null, gpsLatitude: number | null, gpsLongitude: number | null, };
+
+export type AssetDetailView = { summary: AssetSummaryView, fileSize: bigint, locations: Array<LocationView>, metadata: AssetMetadataView | null, };
+
+export type StageProgressView = { stage: string, completed: number, pending: number, failed: number, };
+
+export type IndexStatusView = { stages: Array<StageProgressView>, paused: boolean, totalAssets: number, };
+
+export type RootAddRequest = { path: string, displayName: string, };
+
+export type IdRequest = { id: string, };
+
+export type RootEnabledRequest = { id: string, enabled: boolean, };
+
+export type AssetSearchRequest = { cursor: string | null, pageSize: number, };
+
+export type ViewportRequest = { assetIds: Array<string>, };
+
+export type FinderRevealRequest = { assetId: string, locationId: string, };
+
+export const COMMANDS = {
+           getAppInfo: "get_app_info",
+           rootsList: "roots_list",
+           rootAdd: "root_add",
+           rootRemove: "root_remove",
+           rootSetEnabled: "root_set_enabled",
+           rescanRoot: "rescan_root",
+           assetSearch: "asset_search",
+           assetDetail: "asset_detail",
+           finderReveal: "finder_reveal",
+           viewportUpdate: "viewport_update",
+           indexStatus: "index_status",
+           pauseIndex: "pause_index",
+           resumeIndex: "resume_index",
+         } as const;
 export const EVENTS = { indexProgressChanged: "index-progress-changed" } as const;

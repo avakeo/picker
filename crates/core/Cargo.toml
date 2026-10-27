@@ -13,3 +13,7 @@ picker-learn = { path = "../learn" }
 picker-ml = { path = "../ml" }
 picker-sidecar = { path = "../sidecar" }
 picker-store = { path = "../store" }
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+tempfile = "3"
