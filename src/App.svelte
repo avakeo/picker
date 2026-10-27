@@ -34,6 +34,7 @@
     removeRoot,
     removeTag,
     removeTagAlias,
+    rejectTag,
     renameAlbum,
     renameTag,
     reorderAlbum,
@@ -513,6 +514,19 @@
     });
   }
 
+  async function decideSuggested(tagId: string, reject: boolean) {
+    if (!detail) return;
+    await guard(async () => {
+      if (reject) {
+        await rejectTag([detail!.summary.id], tagId);
+      } else {
+        await assignTag([detail!.summary.id], tagId);
+      }
+      detail = await assetDetail(detail!.summary.id);
+      await Promise.all([refreshTags(), refreshPage(true)]);
+    });
+  }
+
   async function handleRemoveAssigned(tagId: string) {
     const ids = targetIds();
     if (ids.length === 0) return;
@@ -939,8 +953,16 @@
             {#each detail.tags as assigned (assigned.tagId)}
               <span class="chip" class:suggested={assigned.state === "suggested"}>
                 {assigned.displayNameJa}
-                <em>{assigned.state}/{assigned.source}</em>
-                <button type="button" aria-label={`${assigned.displayNameJa} を外す`} onclick={() => void handleRemoveAssigned(assigned.tagId)}>×</button>
+                <em>
+                  {assigned.state}/{assigned.source}
+                  {assigned.confidence !== null ? ` ${Math.round(assigned.confidence * 100)}%` : ""}
+                </em>
+                {#if assigned.state === "suggested"}
+                  <button type="button" title="承認" aria-label={`${assigned.displayNameJa} を承認`} onclick={() => void decideSuggested(assigned.tagId, false)}>✓</button>
+                  <button type="button" title="却下" aria-label={`${assigned.displayNameJa} を却下`} onclick={() => void decideSuggested(assigned.tagId, true)}>✕</button>
+                {:else}
+                  <button type="button" aria-label={`${assigned.displayNameJa} を外す`} onclick={() => void handleRemoveAssigned(assigned.tagId)}>×</button>
+                {/if}
               </span>
             {/each}
           </div>
