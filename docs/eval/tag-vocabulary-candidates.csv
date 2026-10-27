@@ -1,0 +1,39 @@
+tag_id,tag_ja,tag_en,english_prompt,category,selection_note
+animal-dog,犬,dog,a photo of a dog,subject,動物
+animal-cat,猫,cat,a photo of a cat,subject,動物
+animal-bird,鳥,bird,a photo of a bird,subject,動物
+animal-other,その他の動物,animal,a photo of an animal,subject,動物の広い概念
+person-one,一人,one person,a photo of one person,people,人数
+person-group,複数人,group of people,a photo of a group of people,people,人数
+person-child,子ども,child,a photo of a child,people,年代
+food-meal,料理,meal,a photo of a meal,subject,食べ物
+food-dessert,デザート,dessert,a photo of a dessert,subject,食べ物
+object-car,車,car,a photo of a car,subject,乗り物
+object-train,電車,train,a photo of a train,subject,乗り物
+object-flower,花,flower,a photo of a flower,subject,自然物
+object-building,建物,building,a photo of a building,subject,人工物
+object-book,本,book,a photo of a book,subject,日用品
+scene-indoor,屋内,indoor scene,an indoor photo,scene,場所
+scene-outdoor,屋外,outdoor scene,an outdoor photo,scene,場所
+scene-home,家の中,home interior,a photo inside a home,scene,場所
+scene-city,街,city street,a photo of a city street,scene,場所
+scene-park,公園,park,a photo in a park,scene,場所
+scene-mountain,山,mountain,a photo of a mountain,scene,自然
+scene-sea,海,sea,a photo of the sea,scene,自然
+scene-sky,空,sky,a photo of the sky,scene,自然
+event-travel,旅行,travel,a travel photo,event,出来事
+event-meal,食事,meal time,a photo during a meal,event,出来事
+event-celebration,お祝い,celebration,a photo of a celebration,event,出来事
+event-sports,スポーツ,sports,a photo of sports,event,出来事
+time-night,夜,night,a photo at night,attribute,時間
+time-sunset,夕暮れ,sunset,a photo at sunset,attribute,時間
+weather-snow,雪,snow,a photo with snow,attribute,天候
+weather-rain,雨,rain,a photo in the rain,attribute,天候
+color-red,赤いもの,red object,a photo with a red object,attribute,色
+color-blue,青いもの,blue object,a photo with a blue object,attribute,色
+style-closeup,接写,close-up,a close-up photo,composition,構図
+style-landscape,風景,landscape,a landscape photo,composition,構図
+mood-calm,落ち着いた,calm,a calm photo,mood,雰囲気
+mood-lively,にぎやか,lively,a lively photo,mood,雰囲気
+mood-cute,かわいい,cute,a cute photo,mood,日本語で頻出する印象語
+mood-nostalgic,懐かしい,nostalgic,a nostalgic photo,mood,日本語で頻出する印象語
