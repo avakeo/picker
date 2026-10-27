@@ -56,6 +56,7 @@ fn empty_database_migrates_to_latest_schema_in_wal_mode() -> Result<()> {
         "asset_color_manual".to_owned(),
         "asset_colors".to_owned(),
         "assets".to_owned(),
+        "embeddings".to_owned(),
         "jobs".to_owned(),
         "locations".to_owned(),
         "roots".to_owned(),

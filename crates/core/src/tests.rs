@@ -248,3 +248,93 @@ fn albums_keep_order_and_survive_root_removal() {
     assert!(library.album_assets(album.id).is_err());
     assert_eq!(library.asset_page(0, 10).expect("assets").items.len(), 2);
 }
+
+struct MockEmbedder;
+
+impl picker_ml::Embedder for MockEmbedder {
+    fn embed_image(
+        &self,
+        _path: &std::path::Path,
+    ) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        Ok(vec![1.0, 0.0])
+    }
+
+    fn embed_text(&self, _text: &str) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        Ok(vec![1.0, 0.0])
+    }
+
+    fn dimensions(&self) -> usize {
+        2
+    }
+
+    fn model_id(&self) -> &str {
+        "mock"
+    }
+
+    fn model_version(&self) -> &str {
+        "v1"
+    }
+}
+
+#[test]
+fn embeddings_are_indexed_updated_and_searched() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(7)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(8)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    assert!(library.index_embeddings(10).is_err());
+
+    library
+        .set_embedder(Some(std::sync::Arc::new(MockEmbedder)))
+        .expect("embedder");
+    let indexed = library.index_embeddings(10).expect("index");
+    assert_eq!(indexed, 2);
+    let results = library.semantic_search("anything", 10).expect("search");
+    assert_eq!(results.len(), 2);
+    let ids = library.asset_page(0, 10).expect("page").items;
+    assert_eq!(
+        library.similar_assets(ids[0].id, 10).expect("similar"),
+        vec![(ids[1].id, 1.0)]
+    );
+
+    library.set_embedder(None).expect("clear");
+    assert!(library.semantic_search("anything", 10).is_err());
+}
+
+#[test]
+#[ignore = "requires the downloaded clip-japanese ONNX model"]
+fn clip_model_indexes_and_searches_end_to_end() {
+    let root = std::env::var_os("PICKER_CLIP_JAPANESE_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("/home/agent/models/clip-japanese"));
+    if !root.join("clyp_visual.onnx").exists() {
+        eprintln!("skipping: no model at {}", root.display());
+        return;
+    }
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("red.png"), png_bytes(240)).expect("write");
+    fs::write(media.path().join("dark.png"), png_bytes(20)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root_id = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root_id.id).expect("scan");
+    let embedder = picker_ml::ClipJapanese::open(&root, "clip-japanese", "77a62f8").expect("model");
+    library
+        .set_embedder(Some(std::sync::Arc::new(embedder)))
+        .expect("embedder");
+    assert_eq!(library.index_embeddings(10).expect("index"), 2);
+    let progress = library
+        .embedding_progress()
+        .expect("progress")
+        .expect("active");
+    assert_eq!(progress.dimensions, 512);
+    assert_eq!(progress.indexed, 2);
+    assert_eq!(progress.missing, 0);
+    let results = library.semantic_search("暗い画像", 2).expect("search");
+    assert_eq!(results.len(), 2);
+    let first = results[0].0;
+    assert_eq!(library.similar_assets(first, 1).expect("similar").len(), 1);
+}

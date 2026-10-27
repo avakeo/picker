@@ -129,6 +129,14 @@ export type ModelIdRequest = { id: string, };
 
 export type ModelProgressEvent = { modelId: string, version: string, file: string, fileIndex: number, fileCount: number, fileDownloaded: bigint, fileTotal: bigint, totalDownloaded: bigint, totalSize: bigint, };
 
+export type EmbeddingStatusView = { modelId: string, modelVersion: string, dimensions: number, indexed: number, missing: number, };
+
+export type EmbeddingIndexRequest = { limit: number, };
+
+export type SemanticSearchRequest = { query: string, limit: number, };
+
+export type SimilarAssetsRequest = { id: string, limit: number, };
+
 export const COMMANDS = {
            getAppInfo: "get_app_info",
            rootsList: "roots_list",
@@ -170,5 +178,9 @@ export const COMMANDS = {
            modelInstall: "model_install",
            modelActivate: "model_activate",
            modelRemove: "model_remove",
+           embeddingStatus: "embedding_status",
+           embeddingIndex: "embedding_index",
+           semanticSearch: "semantic_search",
+           similarAssets: "similar_assets",
          } as const;
 export const EVENTS = { indexProgressChanged: "index-progress-changed", modelProgressChanged: "model-progress" } as const;

@@ -14,12 +14,13 @@ use std::sync::Arc;
 use crate::contract::{
     AlbumAssetsRequest, AlbumCreateRequest, AlbumRenameRequest, AlbumReorderRequest, AlbumView,
     AssetDetailView, AssetFilterRequest, AssetMetadataView, AssetPageView, AssetSearchRequest,
-    AssetSummaryView, AssetTagView, ColorSetRequest, ColorView, EventContract, FinderRevealRequest,
-    IdRequest, IndexProgressChanged, IndexProgressChangedPayload, IndexStageProgress,
-    IndexStatusView, LocationView, ModelIdRequest, ModelProgressEvent, ModelView, RootAddRequest,
-    RootEnabledRequest, RootView, StageProgressView, TagAliasDeleteRequest, TagAliasRequest,
-    TagAliasView, TagAssignRequest, TagCreateRequest, TagMergeRequest, TagParentRequest,
-    TagRemoveRequest, TagRenameRequest, TagView, ViewportRequest,
+    AssetSummaryView, AssetTagView, ColorSetRequest, ColorView, EmbeddingIndexRequest,
+    EmbeddingStatusView, EventContract, FinderRevealRequest, IdRequest, IndexProgressChanged,
+    IndexProgressChangedPayload, IndexStageProgress, IndexStatusView, LocationView, ModelIdRequest,
+    ModelProgressEvent, ModelView, RootAddRequest, RootEnabledRequest, RootView,
+    SemanticSearchRequest, SimilarAssetsRequest, StageProgressView, TagAliasDeleteRequest,
+    TagAliasRequest, TagAliasView, TagAssignRequest, TagCreateRequest, TagMergeRequest,
+    TagParentRequest, TagRemoveRequest, TagRenameRequest, TagView, ViewportRequest,
 };
 
 /// Shared application state managed by Tauri.
@@ -832,4 +833,85 @@ pub fn model_remove(state: State<'_, AppState>, request: ModelIdRequest) -> Comm
         .split_once('@')
         .ok_or_else(|| "モデル ID は id@version 形式で指定してください。".to_owned())?;
     state.models.remove(id, version).map_err(error)
+}
+
+#[tauri::command]
+pub fn embedding_status(state: State<'_, AppState>) -> CommandResult<Option<EmbeddingStatusView>> {
+    state
+        .library()
+        .embedding_progress()
+        .map(|progress| {
+            progress.map(|progress| EmbeddingStatusView {
+                model_id: progress.model_id,
+                model_version: progress.model_version,
+                dimensions: progress.dimensions,
+                indexed: progress.indexed,
+                missing: progress.missing,
+            })
+        })
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn embedding_index(
+    state: State<'_, AppState>,
+    request: EmbeddingIndexRequest,
+) -> CommandResult<usize> {
+    state
+        .library()
+        .index_embeddings(request.limit.clamp(1, 500))
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn semantic_search(
+    state: State<'_, AppState>,
+    request: SemanticSearchRequest,
+) -> CommandResult<Vec<AssetSummaryView>> {
+    let library = state.library();
+    let results = library
+        .semantic_search(&request.query, request.limit)
+        .map_err(error)?;
+    let mut items = Vec::with_capacity(results.len());
+    for (asset_id, _) in results {
+        let summary = library.asset_summary(asset_id).map_err(error)?;
+        items.push(summary_view(summary));
+    }
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn similar_assets(
+    state: State<'_, AppState>,
+    request: SimilarAssetsRequest,
+) -> CommandResult<Vec<AssetSummaryView>> {
+    let asset_id = parse_id(&request.id)?;
+    let library = state.library();
+    let results = library
+        .similar_assets(asset_id, request.limit)
+        .map_err(error)?;
+    let mut items = Vec::with_capacity(results.len());
+    for (id, _) in results {
+        let summary = library.asset_summary(id).map_err(error)?;
+        items.push(summary_view(summary));
+    }
+    Ok(items)
+}
+
+/// Loads the active embedding model and installs it into the library.
+pub fn configure_embedder(library: &mut Library, registry: &ModelRegistry) -> Result<(), String> {
+    let active = registry
+        .list()
+        .into_iter()
+        .find(|model| model.active && model.state == picker_ml::ModelState::Ready);
+    let Some(model) = active else {
+        library.set_embedder(None).map_err(error)?;
+        return Ok(());
+    };
+    let files = registry.load(&model.id).map_err(error)?;
+    let embedder =
+        picker_ml::ClipJapanese::from_paths(&files, &model.id, &model.version).map_err(error)?;
+    library
+        .set_embedder(Some(Arc::new(embedder)))
+        .map_err(error)
 }
