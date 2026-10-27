@@ -24,6 +24,10 @@ pub struct Store {
 impl Store {
     /// Opens or creates a database, enables WAL and foreign keys, and migrates it.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        if path.file_name().and_then(std::ffi::OsStr::to_str) == Some(":memory:") {
+            return Self::open_in_memory();
+        }
         let connection = Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_WRITE

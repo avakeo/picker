@@ -64,6 +64,22 @@ fn empty_database_migrates_to_latest_schema_in_wal_mode() -> Result<()> {
 }
 
 #[test]
+fn in_memory_paths_never_create_files() -> Result<()> {
+    let temporary = TempDir::new().expect("create temporary directory");
+    let store = Store::open(temporary.path().join(":memory:"))?;
+
+    assert_eq!(store.schema_version()?, LATEST_SCHEMA_VERSION);
+    assert_eq!(
+        std::fs::read_dir(temporary.path())
+            .expect("read temporary directory")
+            .count(),
+        0
+    );
+    assert!(!temporary.path().join(":memory:.ses").exists());
+    Ok(())
+}
+
+#[test]
 fn repositories_round_trip_all_v1_entities() -> Result<()> {
     let store = Store::open_in_memory()?;
     let created_root = store
