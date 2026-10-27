@@ -212,3 +212,39 @@ fn extracts_and_manually_overrides_colors() {
         .set_asset_colors(asset, &[("not-hex".to_owned(), 1.0)])
         .is_err());
 }
+
+#[test]
+fn albums_keep_order_and_survive_root_removal() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(5)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(6)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let page = library.asset_page(0, 10).expect("page");
+    let album = library.create_album("旅行").expect("album");
+    assert_eq!(
+        library
+            .add_assets_to_album(album.id, &[page.items[0].id, page.items[1].id])
+            .expect("add"),
+        2
+    );
+    let items = library.album_assets(album.id).expect("items");
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].id, page.items[0].id);
+
+    library
+        .reorder_album(album.id, &[page.items[1].id, page.items[0].id])
+        .expect("reorder");
+    assert_eq!(
+        library.album_asset_ids(album.id).expect("ids"),
+        vec![page.items[1].id, page.items[0].id]
+    );
+
+    library.remove_root(root.id).expect("remove root");
+    assert_eq!(library.album_assets(album.id).expect("items").len(), 2);
+    assert!(library.delete_album(album.id).expect("delete"));
+    assert!(library.album_assets(album.id).is_err());
+    assert_eq!(library.asset_page(0, 10).expect("assets").items.len(), 2);
+}

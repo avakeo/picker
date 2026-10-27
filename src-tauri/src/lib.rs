@@ -53,6 +53,14 @@ pub fn run() {
             commands::duplicates_list,
             commands::color_set,
             commands::color_reset,
+            commands::albums_list,
+            commands::album_create,
+            commands::album_rename,
+            commands::album_delete,
+            commands::album_add_assets,
+            commands::album_remove_assets,
+            commands::album_reorder,
+            commands::album_assets,
         ])
         .register_uri_scheme_protocol("asset", |_context, request| {
             thumbnail_protocol::handle(request)

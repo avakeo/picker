@@ -396,6 +396,53 @@ impl Library {
         Ok(self.store.colors().list(asset_id)?)
     }
 
+    pub fn list_albums(&self) -> Result<Vec<picker_store::AlbumWithCount>> {
+        Ok(self.store.albums().list()?)
+    }
+
+    pub fn create_album(&self, name: &str) -> Result<picker_store::Album> {
+        Ok(self.store.albums().create(name, 0)?)
+    }
+
+    pub fn rename_album(&self, album_id: i64, name: &str) -> Result<picker_store::Album> {
+        Ok(self.store.albums().rename(album_id, name)?)
+    }
+
+    pub fn delete_album(&self, album_id: i64) -> Result<bool> {
+        Ok(self.store.albums().delete(album_id)?)
+    }
+
+    pub fn add_assets_to_album(&self, album_id: i64, asset_ids: &[i64]) -> Result<usize> {
+        Ok(self.store.albums().add_assets(album_id, asset_ids)?)
+    }
+
+    pub fn remove_assets_from_album(&self, album_id: i64, asset_ids: &[i64]) -> Result<usize> {
+        Ok(self.store.albums().remove_assets(album_id, asset_ids)?)
+    }
+
+    pub fn reorder_album(&self, album_id: i64, asset_ids: &[i64]) -> Result<()> {
+        Ok(self.store.albums().reorder(album_id, asset_ids)?)
+    }
+
+    pub fn album_assets(&self, album_id: i64) -> Result<Vec<AssetSummary>> {
+        let items = self.store.albums().list_items(album_id)?;
+        let mut assets = Vec::with_capacity(items.len());
+        for item in items {
+            assets.push(self.summary(self.store.assets().get(item.asset_id)?)?);
+        }
+        Ok(assets)
+    }
+
+    pub fn album_asset_ids(&self, album_id: i64) -> Result<Vec<i64>> {
+        Ok(self
+            .store
+            .albums()
+            .list_items(album_id)?
+            .into_iter()
+            .map(|item| item.asset_id)
+            .collect())
+    }
+
     pub fn list_tags(&self) -> Result<Vec<picker_store::TagWithCount>> {
         Ok(self.store.tags().list_with_counts()?)
     }

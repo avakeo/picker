@@ -133,6 +133,11 @@ pub fn generated_typescript() -> String {
         ColorView::decl(&config),
         ColorInput::decl(&config),
         ColorSetRequest::decl(&config),
+        AlbumView::decl(&config),
+        AlbumCreateRequest::decl(&config),
+        AlbumRenameRequest::decl(&config),
+        AlbumAssetsRequest::decl(&config),
+        AlbumReorderRequest::decl(&config),
     ]
     .map(|declaration| {
         let declaration = declaration
@@ -176,6 +181,14 @@ pub fn generated_typescript() -> String {
            duplicatesList: \"duplicates_list\",
            colorSet: \"color_set\",
            colorReset: \"color_reset\",
+           albumsList: \"albums_list\",
+           albumCreate: \"album_create\",
+           albumRename: \"album_rename\",
+           albumDelete: \"album_delete\",
+           albumAddAssets: \"album_add_assets\",
+           albumRemoveAssets: \"album_remove_assets\",
+           albumReorder: \"album_reorder\",
+           albumAssets: \"album_assets\",
          }} as const;\n\
          export const EVENTS = {{ indexProgressChanged: \"{}\" }} as const;\n",
         declarations.join("\n\n"),
@@ -529,4 +542,50 @@ pub struct ColorInput {
 pub struct ColorSetRequest {
     pub asset_id: String,
     pub colors: Vec<ColorInput>,
+}
+
+/// An album shown in the sidebar.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AlbumView {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub asset_count: u32,
+}
+
+/// Request for `album_create`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AlbumCreateRequest {
+    pub name: String,
+}
+
+/// Request for `album_rename`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AlbumRenameRequest {
+    pub id: String,
+    pub name: String,
+}
+
+/// Request carrying an album id and assets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AlbumAssetsRequest {
+    pub album_id: String,
+    pub asset_ids: Vec<String>,
+}
+
+/// Request carrying a complete album order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AlbumReorderRequest {
+    pub album_id: String,
+    pub asset_ids: Vec<String>,
 }

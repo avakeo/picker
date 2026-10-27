@@ -113,6 +113,16 @@ export type ColorInput = { hex: string, ratio: number, };
 
 export type ColorSetRequest = { assetId: string, colors: Array<ColorInput>, };
 
+export type AlbumView = { id: string, name: string, kind: string, assetCount: number, };
+
+export type AlbumCreateRequest = { name: string, };
+
+export type AlbumRenameRequest = { id: string, name: string, };
+
+export type AlbumAssetsRequest = { albumId: string, assetIds: Array<string>, };
+
+export type AlbumReorderRequest = { albumId: string, assetIds: Array<string>, };
+
 export const COMMANDS = {
            getAppInfo: "get_app_info",
            rootsList: "roots_list",
@@ -142,5 +152,13 @@ export const COMMANDS = {
            duplicatesList: "duplicates_list",
            colorSet: "color_set",
            colorReset: "color_reset",
+           albumsList: "albums_list",
+           albumCreate: "album_create",
+           albumRename: "album_rename",
+           albumDelete: "album_delete",
+           albumAddAssets: "album_add_assets",
+           albumRemoveAssets: "album_remove_assets",
+           albumReorder: "album_reorder",
+           albumAssets: "album_assets",
          } as const;
 export const EVENTS = { indexProgressChanged: "index-progress-changed" } as const;
