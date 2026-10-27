@@ -357,3 +357,38 @@ fn missing_rows_are_reported_as_sqlite_query_errors() -> Result<()> {
     assert!(raw.is_none());
     Ok(())
 }
+
+#[test]
+fn asset_metadata_round_trips_and_rejects_unknown_assets() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let created = store.assets().insert(&asset(9))?;
+    assert_eq!(
+        store.assets().metadata(created.id)?,
+        Some(AssetMetadata {
+            asset_id: created.id,
+            ..AssetMetadata::default()
+        })
+    );
+
+    let metadata = AssetMetadata {
+        asset_id: created.id,
+        camera_make: Some("Picker".into()),
+        camera_model: Some("TestCam".into()),
+        lens: Some("35mm".into()),
+        exposure_time: Some("1/125".into()),
+        f_number: Some(2.8),
+        iso: Some(200),
+        focal_length_mm: Some(35.0),
+        gps_latitude: Some(35.675),
+        gps_longitude: Some(139.65),
+    };
+    store.assets().set_metadata(&metadata)?;
+    assert_eq!(store.assets().metadata(created.id)?, Some(metadata));
+
+    let missing = AssetMetadata {
+        asset_id: created.id + 100,
+        ..AssetMetadata::default()
+    };
+    assert!(store.assets().set_metadata(&missing).is_err());
+    Ok(())
+}
