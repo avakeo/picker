@@ -61,6 +61,10 @@ pub fn run() {
             commands::album_remove_assets,
             commands::album_reorder,
             commands::album_assets,
+            commands::models_list,
+            commands::model_install,
+            commands::model_activate,
+            commands::model_remove,
         ])
         .register_uri_scheme_protocol("asset", |_context, request| {
             thumbnail_protocol::handle(request)
@@ -74,7 +78,8 @@ pub fn run() {
             let cache = commands::default_cache(&data_dir);
             let library = picker_core::Library::open(&database, &cache)?;
             thumbnail_protocol::set_cache_root(library.cache_root().to_path_buf());
-            app.manage(commands::AppState::new(library));
+            let models = picker_ml::ModelRegistry::open(data_dir.join("models"));
+            app.manage(commands::AppState::new(library, models));
             let _core = create_core();
             Ok(())
         })

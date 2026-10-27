@@ -123,6 +123,12 @@ export type AlbumAssetsRequest = { albumId: string, assetIds: Array<string>, };
 
 export type AlbumReorderRequest = { albumId: string, assetIds: Array<string>, };
 
+export type ModelView = { id: string, version: string, license: string, licenseUrl: string, size: bigint, state: string, active: boolean, };
+
+export type ModelIdRequest = { id: string, };
+
+export type ModelProgressEvent = { modelId: string, version: string, file: string, fileIndex: number, fileCount: number, fileDownloaded: bigint, fileTotal: bigint, totalDownloaded: bigint, totalSize: bigint, };
+
 export const COMMANDS = {
            getAppInfo: "get_app_info",
            rootsList: "roots_list",
@@ -160,5 +166,9 @@ export const COMMANDS = {
            albumRemoveAssets: "album_remove_assets",
            albumReorder: "album_reorder",
            albumAssets: "album_assets",
+           modelsList: "models_list",
+           modelInstall: "model_install",
+           modelActivate: "model_activate",
+           modelRemove: "model_remove",
          } as const;
-export const EVENTS = { indexProgressChanged: "index-progress-changed" } as const;
+export const EVENTS = { indexProgressChanged: "index-progress-changed", modelProgressChanged: "model-progress" } as const;
