@@ -34,6 +34,37 @@ impl<'connection> RootRepository<'connection> {
         self.get(self.connection.last_insert_rowid())
     }
 
+    /// Registers a root after rejecting lexical parent/child overlap.
+    ///
+    /// The caller is expected to pass the path selected by the native folder
+    /// dialog. Canonicalization is deliberately left to the platform layer;
+    /// the database stores the selected absolute path and compares it using
+    /// path components so `/photos-old` does not overlap `/photos`.
+    pub fn register(&self, root: &NewRoot<'_>) -> Result<Root> {
+        validate_absolute_path(root.absolute_path)?;
+        validate_nonempty("display_name", root.display_name)?;
+        for existing in self.list()? {
+            if paths_overlap(root.absolute_path, &existing.absolute_path) {
+                return Err(StoreError::RootOverlap {
+                    requested: root.absolute_path.to_owned(),
+                    existing: existing.absolute_path,
+                });
+            }
+        }
+        self.insert(root)
+    }
+
+    pub fn set_enabled(&self, id: i64, enabled: bool) -> Result<Root> {
+        let changed = self.connection.execute(
+            "UPDATE roots SET enabled = ?1, updated_at = unixepoch() WHERE id = ?2",
+            params![enabled, id],
+        )?;
+        if changed == 0 {
+            return Err(StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows));
+        }
+        self.get(id)
+    }
+
     pub fn get(&self, id: i64) -> Result<Root> {
         Ok(self.connection.query_row(
             "SELECT id, absolute_path, volume_id, display_name, enabled, status
@@ -462,6 +493,12 @@ fn validate_absolute_path(value: &str) -> Result<()> {
         });
     }
     Ok(())
+}
+
+fn paths_overlap(left: &str, right: &str) -> bool {
+    let left = std::path::Path::new(left);
+    let right = std::path::Path::new(right);
+    left == right || left.starts_with(right) || right.starts_with(left)
 }
 
 fn validate_relative_path(value: &str) -> Result<()> {
