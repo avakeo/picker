@@ -3,8 +3,8 @@ use std::{path::Component, str::FromStr};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::{
-    Asset, Job, JobStatus, Location, LocationStatus, NewAsset, NewLocation, NewRoot, Result, Root,
-    RootStatus, Setting, Stage, StageState, StageStatus, StageTarget, StoreError,
+    Asset, AssetMetadata, Job, JobStatus, Location, LocationStatus, NewAsset, NewLocation, NewRoot,
+    Result, Root, RootStatus, Setting, Stage, StageState, StageStatus, StageTarget, StoreError,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -167,6 +167,60 @@ impl<'connection> AssetRepository<'connection> {
             )
             .optional()?;
         id.map(|value| self.get(value)).transpose()
+    }
+
+    /// Stores or replaces the EXIF cache for an asset.
+    pub fn set_metadata(&self, metadata: &AssetMetadata) -> Result<()> {
+        let changed = self.connection.execute(
+            "UPDATE assets SET
+                camera_make = ?1, camera_model = ?2, lens = ?3, exposure_time = ?4,
+                f_number = ?5, iso = ?6, focal_length_mm = ?7,
+                gps_latitude = ?8, gps_longitude = ?9, updated_at = unixepoch()
+             WHERE id = ?10",
+            params![
+                metadata.camera_make,
+                metadata.camera_model,
+                metadata.lens,
+                metadata.exposure_time,
+                metadata.f_number,
+                metadata.iso,
+                metadata.focal_length_mm,
+                metadata.gps_latitude,
+                metadata.gps_longitude,
+                metadata.asset_id,
+            ],
+        )?;
+        if changed == 0 {
+            return Err(StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows));
+        }
+        Ok(())
+    }
+
+    /// Returns the EXIF cache for an asset.
+    pub fn metadata(&self, id: i64) -> Result<Option<AssetMetadata>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT id, camera_make, camera_model, lens, exposure_time, f_number,
+                        iso, focal_length_mm, gps_latitude, gps_longitude
+                 FROM assets WHERE id = ?1",
+                [id],
+                |row| {
+                    Ok(AssetMetadata {
+                        asset_id: row.get(0)?,
+                        camera_make: row.get(1)?,
+                        camera_model: row.get(2)?,
+                        lens: row.get(3)?,
+                        exposure_time: row.get(4)?,
+                        f_number: row.get(5)?,
+                        iso: row.get(6)?,
+                        focal_length_mm: row.get(7)?,
+                        gps_latitude: row.get(8)?,
+                        gps_longitude: row.get(9)?,
+                    })
+                },
+            )
+            .optional()?)
     }
 }
 

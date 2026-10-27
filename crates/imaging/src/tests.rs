@@ -213,3 +213,216 @@ fn detects_formats_from_magic_and_path() {
         None
     );
 }
+
+struct ExifFixture<'a> {
+    make: &'a str,
+    model: &'a str,
+    datetime: &'a str,
+    iso: u32,
+    gps: bool,
+}
+
+fn jpeg_with_exif(image: &DynamicImage, fixture: &ExifFixture<'_>) -> Vec<u8> {
+    let mut jpeg = encode(image, ImageFormat::Jpeg);
+    let make = format!("{}\0", fixture.make).into_bytes();
+    let model = format!("{}\0", fixture.model).into_bytes();
+    let datetime = format!("{}\0", fixture.datetime).into_bytes();
+
+    let mut data = Vec::<u8>::new();
+    let data_start = 8 + 2 + 9 * 12 + 4;
+    let mut cursor = data_start;
+    let make_offset = push_data(&mut data, &mut cursor, &make);
+    let model_offset = push_data(&mut data, &mut cursor, &model);
+    let datetime_offset = push_data(&mut data, &mut cursor, &datetime);
+    let mut rational = Vec::new();
+    rational.extend_from_slice(&1_u32.to_le_bytes());
+    rational.extend_from_slice(&125_u32.to_le_bytes());
+    let exposure_offset = push_data(&mut data, &mut cursor, &rational);
+    rational.clear();
+    rational.extend_from_slice(&28_u32.to_le_bytes());
+    rational.extend_from_slice(&10_u32.to_le_bytes());
+    let f_number_offset = push_data(&mut data, &mut cursor, &rational);
+    rational.clear();
+    rational.extend_from_slice(&35_u32.to_le_bytes());
+    rational.extend_from_slice(&1_u32.to_le_bytes());
+    let focal_offset = push_data(&mut data, &mut cursor, &rational);
+
+    let gps_ifd_offset = if fixture.gps {
+        let offset = cursor;
+        let gps_data_start = cursor + 2 + 4 * 12 + 4;
+        let lat_offset = gps_data_start;
+        let lon_offset = lat_offset + 24;
+        let gps_entry = |tag: u16, kind: u16, count: u32, value: [u8; 4]| {
+            let mut entry = Vec::with_capacity(12);
+            entry.extend_from_slice(&tag.to_le_bytes());
+            entry.extend_from_slice(&kind.to_le_bytes());
+            entry.extend_from_slice(&count.to_le_bytes());
+            entry.extend_from_slice(&value);
+            entry
+        };
+        let inline = |bytes: [u8; 2]| [bytes[0], bytes[1], 0, 0];
+        let mut gps = Vec::new();
+        gps.extend_from_slice(&4_u16.to_le_bytes());
+        gps.extend_from_slice(&gps_entry(0x0001, 2, 2, inline(*b"N\0")));
+        gps.extend_from_slice(&gps_entry(0x0002, 5, 3, lat_offset.to_le_bytes()));
+        gps.extend_from_slice(&gps_entry(0x0003, 2, 2, inline(*b"E\0")));
+        gps.extend_from_slice(&gps_entry(0x0004, 5, 3, lon_offset.to_le_bytes()));
+        gps.extend_from_slice(&0_u32.to_le_bytes());
+        for (numerator, denominator) in [(35_u32, 1_u32), (40, 1), (30, 1)] {
+            gps.extend_from_slice(&numerator.to_le_bytes());
+            gps.extend_from_slice(&denominator.to_le_bytes());
+        }
+        for (numerator, denominator) in [(139_u32, 1_u32), (39, 1), (0, 1)] {
+            gps.extend_from_slice(&numerator.to_le_bytes());
+            gps.extend_from_slice(&denominator.to_le_bytes());
+        }
+        data.extend_from_slice(&gps);
+        cursor += u32::try_from(gps.len()).expect("small fixture");
+        Some(offset)
+    } else {
+        None
+    };
+    let _ = cursor;
+
+    let mut entries = vec![
+        exif_entry(
+            0x010F,
+            2,
+            u32::try_from(make.len()).expect("len"),
+            make_offset,
+        ),
+        exif_entry(
+            0x0110,
+            2,
+            u32::try_from(model.len()).expect("len"),
+            model_offset,
+        ),
+        exif_entry(0x0112, 3, 1, 1),
+        exif_entry(
+            0x0132,
+            2,
+            u32::try_from(datetime.len()).expect("len"),
+            datetime_offset,
+        ),
+        exif_entry(0x829A, 5, 1, exposure_offset),
+        exif_entry(0x829D, 5, 1, f_number_offset),
+        exif_entry(0x8825, 4, 1, gps_ifd_offset.unwrap_or(0)),
+        exif_entry(0x8827, 3, 1, fixture.iso),
+        exif_entry(0x920A, 5, 1, focal_offset),
+    ];
+    entries.sort_by_key(|entry| u16::from_le_bytes([entry[0], entry[1]]));
+    let mut tiff = Vec::new();
+    tiff.extend_from_slice(b"II\x2A\x00\x08\x00\x00\x00");
+    tiff.extend_from_slice(&u16::try_from(entries.len()).expect("count").to_le_bytes());
+    for entry in entries {
+        tiff.extend_from_slice(&entry);
+    }
+    tiff.extend_from_slice(&0_u32.to_le_bytes());
+    tiff.extend_from_slice(&data);
+
+    let mut payload = b"Exif\x00\x00".to_vec();
+    payload.extend_from_slice(&tiff);
+    let mut segment = vec![0xFF, 0xE1];
+    let length = u16::try_from(payload.len() + 2).expect("small fixture");
+    segment.extend_from_slice(&length.to_be_bytes());
+    segment.extend_from_slice(&payload);
+    jpeg.splice(2..2, segment);
+    jpeg
+}
+
+fn push_data(data: &mut Vec<u8>, cursor: &mut u32, bytes: &[u8]) -> u32 {
+    let offset = *cursor;
+    data.extend_from_slice(bytes);
+    *cursor += u32::try_from(bytes.len()).expect("small fixture");
+    offset
+}
+
+fn exif_entry(tag: u16, kind: u16, count: u32, value: u32) -> Vec<u8> {
+    let mut entry = Vec::with_capacity(12);
+    entry.extend_from_slice(&tag.to_le_bytes());
+    entry.extend_from_slice(&kind.to_le_bytes());
+    entry.extend_from_slice(&count.to_le_bytes());
+    entry.extend_from_slice(&value.to_le_bytes());
+    entry
+}
+
+#[test]
+fn extracts_exif_fields_and_gps() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    let path = temporary.path().join("exif.jpg");
+    let fixture = ExifFixture {
+        make: "Picker",
+        model: "TestCam",
+        datetime: "2024:05:06 07:08:09",
+        iso: 200,
+        gps: true,
+    };
+    std::fs::write(&path, jpeg_with_exif(&test_image(9, 4), &fixture)).expect("write fixture");
+    let metadata = extract(
+        &RustFallbackDecoder,
+        &path,
+        ImageFormat::Jpeg,
+        &DecodeLimits::default(),
+    )
+    .expect("extract metadata");
+    assert_eq!((metadata.width, metadata.height), (9, 4));
+    assert_eq!(metadata.format.as_deref(), Some("jpeg"));
+    assert_eq!(metadata.camera_make.as_deref(), Some("Picker"));
+    assert_eq!(metadata.camera_model.as_deref(), Some("TestCam"));
+    assert_eq!(metadata.captured_at, Some(1_714_979_289));
+    assert_eq!(metadata.iso, Some(200));
+    assert_eq!(metadata.f_number, Some(2.8));
+    assert_eq!(metadata.focal_length_mm, Some(35.0));
+    assert_eq!(metadata.exposure_time.as_deref(), Some("1/125"));
+    let gps = metadata.gps.expect("gps coordinates");
+    assert!((gps.latitude - 35.675).abs() < 1e-9);
+    assert!((gps.longitude - 139.65).abs() < 1e-9);
+}
+
+#[test]
+fn missing_or_broken_exif_is_not_fatal() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    let plain = temporary.path().join("plain.png");
+    std::fs::write(&plain, encode(&test_image(5, 3), ImageFormat::Png)).expect("fixture");
+    let metadata = extract(
+        &RustFallbackDecoder,
+        &plain,
+        ImageFormat::Png,
+        &DecodeLimits::default(),
+    )
+    .expect("metadata without exif");
+    assert_eq!((metadata.width, metadata.height), (5, 3));
+    assert!(metadata.captured_at.is_none());
+    assert!(metadata.camera_make.is_none());
+
+    let broken = temporary.path().join("broken-exif.jpg");
+    let mut bytes = encode(&test_image(5, 3), ImageFormat::Jpeg);
+    let payload = b"Exif\x00\x00not-a-tiff";
+    let mut segment = vec![0xFF, 0xE1];
+    segment.extend_from_slice(
+        &u16::try_from(payload.len() + 2)
+            .expect("small fixture")
+            .to_be_bytes(),
+    );
+    segment.extend_from_slice(payload);
+    bytes.splice(2..2, segment);
+    std::fs::write(&broken, bytes).expect("fixture");
+    let metadata = extract(
+        &RustFallbackDecoder,
+        &broken,
+        ImageFormat::Jpeg,
+        &DecodeLimits::default(),
+    )
+    .expect("broken exif must still decode");
+    assert!(metadata.camera_make.is_none());
+}
+
+#[test]
+fn parses_and_validates_exif_datetime() {
+    assert_eq!(
+        parse_exif_datetime("2024:05:06 07:08:09"),
+        Some(1_714_979_289)
+    );
+    assert_eq!(parse_exif_datetime("not a date"), None);
+    assert_eq!(parse_exif_datetime("2024:13:40 25:00:00"), None);
+}

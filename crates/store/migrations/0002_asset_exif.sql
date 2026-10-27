@@ -1,0 +1,9 @@
+ALTER TABLE assets ADD COLUMN camera_make TEXT;
+ALTER TABLE assets ADD COLUMN camera_model TEXT;
+ALTER TABLE assets ADD COLUMN lens TEXT;
+ALTER TABLE assets ADD COLUMN exposure_time TEXT;
+ALTER TABLE assets ADD COLUMN f_number REAL;
+ALTER TABLE assets ADD COLUMN iso INTEGER;
+ALTER TABLE assets ADD COLUMN focal_length_mm REAL;
+ALTER TABLE assets ADD COLUMN gps_latitude REAL;
+ALTER TABLE assets ADD COLUMN gps_longitude REAL;
