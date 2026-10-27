@@ -2314,6 +2314,9 @@ version = "0.1.0"
 [[package]]
 name = "picker-indexer"
 version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
 
 [[package]]
 name = "picker-learn"
