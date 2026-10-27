@@ -418,6 +418,77 @@ impl<'connection> JobRepository<'connection> {
             updated_at: raw.10,
         })
     }
+
+    pub fn dequeue(&self, stage: Option<Stage>) -> Result<Option<Job>> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let id = if let Some(stage) = stage {
+            transaction.query_row(
+                "SELECT id FROM jobs WHERE status = 'pending' AND stage = ?1 ORDER BY priority DESC, created_at, id LIMIT 1",
+                [stage.as_str()], |row| row.get(0)).optional()?
+        } else {
+            transaction.query_row(
+                "SELECT id FROM jobs WHERE status = 'pending' ORDER BY priority DESC, created_at, id LIMIT 1",
+                [], |row| row.get(0)).optional()?
+        };
+        let Some(id) = id else {
+            transaction.commit()?;
+            return Ok(None);
+        };
+        transaction.execute(
+            "UPDATE jobs SET status = 'running', attempts = attempts + 1, updated_at = unixepoch()
+             WHERE id = ?1 AND status = 'pending' AND attempts < max_attempts",
+            [id],
+        )?;
+        transaction.commit()?;
+        self.get(id).map(Some)
+    }
+
+    pub fn recover_running(&self) -> Result<usize> {
+        Ok(self.connection.execute(
+            "UPDATE jobs SET status = 'pending', updated_at = unixepoch() WHERE status = 'running'",
+            [],
+        )?)
+    }
+
+    pub fn mark_succeeded(&self, id: i64) -> Result<Job> {
+        self.update_status(id, JobStatus::Succeeded, None)
+    }
+
+    pub fn fail_or_retry(&self, id: i64, error: &str) -> Result<Job> {
+        validate_nonempty("job error", error)?;
+        let job = self.get(id)?;
+        let status = if job.attempts < job.max_attempts {
+            JobStatus::Pending
+        } else {
+            JobStatus::Failed
+        };
+        self.update_status(id, status, Some(error))
+    }
+
+    pub fn pause_pending(&self) -> Result<usize> {
+        Ok(self.connection.execute(
+            "UPDATE jobs SET status = 'paused', updated_at = unixepoch() WHERE status = 'pending'",
+            [],
+        )?)
+    }
+
+    pub fn resume_paused(&self) -> Result<usize> {
+        Ok(self.connection.execute(
+            "UPDATE jobs SET status = 'pending', updated_at = unixepoch() WHERE status = 'paused'",
+            [],
+        )?)
+    }
+
+    fn update_status(&self, id: i64, status: JobStatus, error: Option<&str>) -> Result<Job> {
+        let changed = self.connection.execute(
+            "UPDATE jobs SET status = ?1, last_error = ?2, updated_at = unixepoch() WHERE id = ?3",
+            params![status.as_str(), error, id],
+        )?;
+        if changed == 0 {
+            return Err(StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows));
+        }
+        self.get(id)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
