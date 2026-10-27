@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - codex/T0-2
   push:
     branches:
       - main
@@ -33,6 +34,9 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --all --check
+
+      - name: Check generated UI contract
+        run: cargo run -p picker-app --bin generate-types -- --check
 
       - name: Check compilation
         run: cargo check --workspace --all-targets --all-features

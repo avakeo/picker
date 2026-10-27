@@ -120,7 +120,14 @@ npm run build
 
 ### TypeScript 型生成
 
-Rust 型から TypeScript 型を生成する仕組みは T0-8 で導入予定であり、現時点で実行コマンドはない。T0-8 完了時にこの節と CI を更新する。
+Rust 側の UI 契約型を変更したら、生成物を同じコミットに含める。
+
+```sh
+cargo run -p picker-app --bin generate-types
+cargo run -p picker-app --bin generate-types -- --check
+```
+
+2つ目のコマンドはコミット済み生成物が最新か検査し、CI でも実行される。
 
 ### 時間のかかるテスト
 

@@ -2,9 +2,9 @@
 
 ## 実行される検査
 
-`.github/workflows/ci.yml` は `main` 向けの Pull Request と `main` への push で、macOS runner 上に次の検査を実行する。
+`.github/workflows/ci.yml` は `main` または積み上げ元の `codex/T0-2` 向けの Pull Request と、`main` への push で、macOS runner 上に次の検査を実行する。
 
-- Rust: `fmt`、`check`、`clippy`、`test`
+- Rust: `fmt`、UI 契約の生成忘れ検査、`check`、`clippy`、`test`
 - Rust 依存: `cargo-deny` による advisory、license、ban、source 検査
 - フロントエンド: `npm ci`、型チェック、lint、build
 
