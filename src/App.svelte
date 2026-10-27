@@ -13,6 +13,7 @@
     createAlbum,
     autoTag,
     convertTagToCustom,
+    confirmReview,
     createTag,
     customSuggest,
     deleteAlbum,
@@ -40,6 +41,7 @@
     renameAlbum,
     renameTag,
     reorderAlbum,
+    reviewCandidates,
     resetColors,
     setColors,
     rescanRoot,
@@ -51,6 +53,8 @@
     setTagParent,
     similarAssets,
     thumbnailUrl,
+    trainCustomTag,
+    undoFeedback,
     updateViewport,
     type AssetDetailView,
     type AssetPageView,
@@ -78,6 +82,11 @@
   let resultItems: AssetSummaryView[] = [];
   let resultLabel = "";
   let autoTagResult = 0;
+  let reviewTagId = "";
+  let reviewItems: AssetSummaryView[] = [];
+  let reviewExcluded = new SvelteSet<string>();
+  let reviewCursor = 0;
+  let reviewEvents: string[] = [];
   let modelProgress: ModelProgressEvent | null = null;
   let installingModel = "";
   let currentAlbumId = "";
@@ -554,6 +563,71 @@
     });
   }
 
+  async function handleTrainCustom(tag: TagView) {
+    await guard(async () => {
+      await trainCustomTag(tag.id);
+      if (detail) detail = await assetDetail(detail.summary.id);
+      await refreshPage(true);
+    });
+  }
+
+  async function openReview(tag: TagView) {
+    await guard(async () => {
+      reviewItems = await reviewCandidates(tag.id, 20, 0.5);
+      reviewTagId = tag.id;
+      reviewExcluded = new SvelteSet();
+      reviewCursor = 0;
+      reviewEvents = [];
+    });
+  }
+
+  function toggleReview(assetId: string, included: boolean) {
+    if (included) {
+      reviewExcluded.delete(assetId);
+    } else {
+      reviewExcluded.add(assetId);
+    }
+  }
+
+  async function confirmReviewBatch() {
+    if (!reviewTagId || reviewItems.length === 0) return;
+    const keep = reviewItems.filter((item) => !reviewExcluded.has(item.id)).map((item) => item.id);
+    const reject = reviewItems.filter((item) => reviewExcluded.has(item.id)).map((item) => item.id);
+    await guard(async () => {
+      reviewEvents = await confirmReview(reviewTagId, keep, reject);
+      reviewTagId = "";
+      await Promise.all([refreshTags(), refreshPage(true)]);
+      if (detail) detail = await assetDetail(detail.summary.id);
+    });
+  }
+
+  async function undoReview() {
+    const events = [...reviewEvents].reverse();
+    reviewEvents = [];
+    await guard(async () => {
+      for (const event of events) await undoFeedback(event);
+      await Promise.all([refreshTags(), refreshPage(true)]);
+      if (detail) detail = await assetDetail(detail.summary.id);
+    });
+  }
+
+  function handleReviewKey(event: KeyboardEvent) {
+    if (!reviewTagId) return;
+    if (event.key === "Escape") {
+      reviewTagId = "";
+    } else if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+      if (reviewItems.length === 0) return;
+      const delta = event.key === "ArrowRight" ? 1 : -1;
+      reviewCursor = (reviewCursor + delta + reviewItems.length) % reviewItems.length;
+    } else if (event.key === " ") {
+      const item = reviewItems[reviewCursor];
+      if (item) toggleReview(item.id, reviewExcluded.has(item.id));
+      event.preventDefault();
+    } else if (event.key === "Enter") {
+      void confirmReviewBatch();
+    }
+  }
+
   async function handleCreateTag() {
     if (!newCanonical.trim()) return;
     await guard(async () => {
@@ -688,6 +762,8 @@
   <title>Picker</title>
 </svelte:head>
 
+<svelte:window onkeydown={handleReviewKey} />
+
 <div class="app">
   <aside>
     <h1>Picker</h1>
@@ -703,10 +779,12 @@
       {#each models as model (model.id)}
         <div class="model">
           <div><strong>{model.id}</strong> {model.version}</div>
+
           <div class="muted">
             {model.state === "ready" ? "導入済み" : model.state === "partial" ? "未完了" : "未導入"}
             ・{Math.round(Number(model.size) / 1_000_000)} MB ・{model.license}
           </div>
+
           <div class="inline">
             {#if model.state !== "ready"}
               <button type="button" disabled={busy || installingModel !== ""} onclick={() => void handleInstallModel(model)}>
@@ -720,20 +798,24 @@
             {/if}
             <a href={model.licenseUrl} target="_blank" rel="noreferrer">ライセンス</a>
           </div>
+
           {#if installingModel === model.id && modelProgress}
             <progress max="100" value={modelPercent(modelProgress)}></progress>
             <div class="muted">
               {modelPercent(modelProgress)}% ({Math.round(Number(modelProgress.totalDownloaded) / 1_000_000)} /
               {Math.round(Number(modelProgress.totalSize) / 1_000_000)} MB)
             </div>
+
           {/if}
         </div>
+
       {/each}
       {#if embeddings}
         <div class="model">
           <div class="muted">
             埋め込み: {embeddings.indexed} / {embeddings.indexed + embeddings.missing} 件
           </div>
+
           {#if embeddings.missing > 0}
             <button type="button" disabled={busy} onclick={() => void runEmbeddingBatch()}>
               埋め込みを100件処理
@@ -744,6 +826,7 @@
           </button>
           {#if autoTagResult > 0}<div class="muted">提案 {autoTagResult} 件</div>{/if}
         </div>
+
       {/if}
     </section>
 
@@ -778,8 +861,11 @@
       {#each roots as root (root.id)}
         <li class:disabled={!root.enabled}>
           <div class="root-name" title={root.path}>{root.displayName}</div>
+
           <div class="muted">{root.path}</div>
+
           <div class="root-meta">{root.imageCount} 枚 · {root.online ? "オンライン" : "オフライン"}</div>
+
           <div class="root-actions">
             <button type="button" disabled={busy} onclick={() => void handleRescan(root)}>再スキャン</button>
             <button type="button" disabled={busy} onclick={() => void handleToggleRoot(root)}>
@@ -787,6 +873,7 @@
             </button>
             <button type="button" disabled={busy} onclick={() => void handleRemoveRoot(root)}>削除</button>
           </div>
+
         </li>
       {/each}
     </ul>
@@ -801,6 +888,7 @@
         </select>
         <label class="check"><input type="checkbox" bind:checked={includeSuggested} /> 提案を含む</label>
       </div>
+
       <div class="filter-row">
         <select bind:value={formatFilter} aria-label="形式">
           <option value="">すべての形式</option>
@@ -812,6 +900,7 @@
         <input class="num" type="number" min="0" bind:value={minWidth} placeholder="最小幅" aria-label="最小幅" />
         <input class="num" type="number" min="0" bind:value={minHeight} placeholder="最小高" aria-label="最小高" />
       </div>
+
       <div class="filter-list">
         {#each tags as tag (tag.id)}
           <label class="check tag-filter">
@@ -824,11 +913,13 @@
           </label>
         {/each}
       </div>
+
       <div class="filter-row">
         <button type="button" disabled={busy} onclick={() => void applyFilter()}>絞り込む</button>
         <button type="button" disabled={busy} onclick={() => void clearFilter()}>解除</button>
         <button type="button" disabled={busy} onclick={() => void showDuplicates()}>重複</button>
       </div>
+
     </section>
 
     <details class="tag-manager">
@@ -861,12 +952,15 @@
                   <button type="button" disabled={busy} onclick={() => void handleConvertToCustom(tag)}>カスタム化</button>
                 {:else}
                   <button type="button" disabled={busy} onclick={() => void handleCustomSuggest(tag)}>候補更新</button>
+                  <button type="button" disabled={busy} onclick={() => void handleTrainCustom(tag)}>再学習</button>
                 {/if}
+                <button type="button" disabled={busy} onclick={() => void openReview(tag)}>レビュー</button>
                 <button type="button" class:danger={armedDeleteId === tag.id} disabled={busy} onclick={() => void handleDeleteTag(tag.id)}>
                   {armedDeleteId === tag.id ? "本当に削除" : "削除"}
                 </button>
               {/if}
             </div>
+
             <div class="inline">
               <select value={tag.parentId ?? ""} aria-label="親タグ変更" onchange={(event) => void handleParentChange(tag.id, event.currentTarget.value)}>
                 <option value="">親なし</option>
@@ -882,12 +976,14 @@
               </select>
               <button type="button" disabled={busy || !mergeTargets[tag.id]} onclick={() => void handleMerge(tag.id)}>統合</button>
             </div>
+
             <details ontoggle={(event) => void toggleAliases(tag.id, event.currentTarget.open)}>
               <summary>別名</summary>
               <div class="inline">
                 <input bind:value={aliasDrafts[tag.id]} placeholder="別名" aria-label="別名" />
                 <button type="button" disabled={busy} onclick={() => void handleAddAlias(tag.id)}>追加</button>
               </div>
+
               <ul class="aliases">
                 {#each aliasesByTag[tag.id] ?? [] as alias (alias.id)}
                   <li>{alias.alias} <button type="button" onclick={() => void handleRemoveAlias(tag.id, alias.id)}>×</button></li>
@@ -909,12 +1005,14 @@
         {viewMode === "album" ? `(アルバム: ${albums.find((album) => album.id === currentAlbumId)?.name ?? ""})` : ""}
         {viewMode === "semantic" || viewMode === "similar" ? `(${resultLabel})` : ""}
       </div>
+
       {#if status}
         <div class="stages">
           {#each status.stages.filter((stage) => stage.completed + stage.pending + stage.failed > 0) as stage (stage.stage)}
             <span>{stage.stage}: {stage.completed} 完了 / {stage.pending} 待ち / {stage.failed} 失敗</span>
           {/each}
         </div>
+
         <button type="button" disabled={busy} onclick={() => void togglePause()}>
           {status.paused ? "再開" : "一時停止"}
         </button>
@@ -932,6 +1030,7 @@
       </button>
       <button type="button" disabled={busy} onclick={() => void refreshAll()}>更新</button>
     </div>
+
 
     {#if errorMessage}<p class="error" role="alert">{errorMessage}</p>{/if}
 
@@ -955,6 +1054,7 @@
           {/if}
         {/if}
       </div>
+
 
       <section class="detail">
         {#if detail}
@@ -988,6 +1088,7 @@
               </span>
             {/each}
           </div>
+
           <div class="inline">
             <select bind:value={assignTagId} aria-label="付与するタグ">
               <option value="">タグを選択</option>
@@ -995,6 +1096,7 @@
             </select>
             <button type="button" disabled={busy || !assignTagId} onclick={() => void handleAssignTag()}>付与</button>
           </div>
+
 
           <h2>色</h2>
           <div class="colors">
@@ -1006,6 +1108,7 @@
             {/each}
             {#if detail.colors.length === 0}<span class="muted">色なし</span>{/if}
           </div>
+
           {#if colorEditing}
             <div class="inline">
               {#each colorDrafts as _hex, index (index)}
@@ -1018,6 +1121,7 @@
               <button type="button" disabled={busy} onclick={() => void resetColorsToAuto()}>自動に戻す</button>
               <button type="button" onclick={() => (colorEditing = false)}>取消</button>
             </div>
+
           {:else}
             <button type="button" onclick={beginColorEdit}>色を修正</button>
           {/if}
@@ -1033,6 +1137,7 @@
               <button type="button" disabled={busy} onclick={() => void moveInAlbum(1)}>↓ 後ろへ</button>
               <button type="button" disabled={busy} onclick={() => void removeSelectionFromAlbum()}>アルバムから外す</button>
             </div>
+
           {/if}
 
           <h2>保存場所</h2>
@@ -1052,10 +1157,57 @@
         {/if}
       </section>
     </div>
+
   </main>
 </div>
 
+
+{#if reviewTagId}
+  <div class="review-backdrop">
+    <dialog open class="review-modal" aria-label="タグ候補のレビュー">
+      <header>
+        <h2>{tags.find((tag) => tag.id === reviewTagId)?.displayNameJa ?? "候補"} のレビュー</h2>
+        <span class="muted">{reviewCursor + 1} / {reviewItems.length} ・ 外したものだけ却下されます</span>
+      </header>
+      <div class="review-grid">
+        {#each reviewItems as item, index (item.id)}
+          <label class="review-card" class:excluded={reviewExcluded.has(item.id)} class:cursor={index === reviewCursor}>
+            <input
+              type="checkbox"
+              checked={!reviewExcluded.has(item.id)}
+              onchange={(event) => toggleReview(item.id, event.currentTarget.checked)}
+            />
+            <img src={thumbnailUrl(item.id, "grid")} alt="" />
+          </label>
+        {/each}
+        {#if reviewItems.length === 0}<p class="muted">候補がありません。</p>{/if}
+      </div>
+      <div class="inline">
+        <button type="button" disabled={busy || reviewItems.length === 0} onclick={() => void confirmReviewBatch()}>
+          確定
+        </button>
+        <button type="button" onclick={() => (reviewTagId = "")}>閉じる</button>
+        {#if reviewEvents.length > 0}
+          <button type="button" disabled={busy} onclick={() => void undoReview()}>元に戻す</button>
+        {/if}
+      </div>
+      <p class="muted">← → で移動、Space で除外、Enter で確定、Esc で閉じる</p>
+    </dialog>
+  </div>
+{/if}
+
 <style>
+  .review-backdrop {
+    position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+    background: #000b; padding: 24px;
+  }
+  .review-modal { width: min(1000px, 95vw); max-height: 90vh; overflow: auto; background: #1b1b1b; border-radius: 10px; padding: 16px; }
+  .review-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin: 12px 0; }
+  .review-card { position: relative; border: 2px solid transparent; border-radius: 6px; overflow: hidden; background: #242424; }
+  .review-card.cursor { border-color: #78a9ff; }
+  .review-card.excluded { opacity: 0.35; }
+  .review-card img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+  .review-card input { position: absolute; top: 4px; left: 4px; }
   :global(html, body) { margin: 0; height: 100%; }
   :global(body) { background: #131313; color: #ececec; font-family: system-ui, sans-serif; }
   :global(*) { box-sizing: border-box; }
