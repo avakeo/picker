@@ -48,6 +48,8 @@ pub fn run() {
             commands::tag_add_alias,
             commands::tag_remove_alias,
             commands::tag_assign,
+            commands::tag_convert_to_custom,
+            commands::custom_suggest,
             commands::tag_reject,
             commands::auto_tag,
             commands::tag_remove,

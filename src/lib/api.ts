@@ -255,3 +255,11 @@ export function rejectTag(assetIds: string[], tagId: string): Promise<number> {
 export function autoTag(limit: number): Promise<number> {
   return invoke("auto_tag", { request: { limit } });
 }
+
+export function convertTagToCustom(id: string): Promise<TagView> {
+  return invoke("tag_convert_to_custom", { request: { id } });
+}
+
+export function customSuggest(tagId: string, limit: number): Promise<number> {
+  return invoke("custom_suggest", { request: { tagId, limit } });
+}

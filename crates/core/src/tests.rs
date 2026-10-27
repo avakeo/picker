@@ -464,3 +464,110 @@ fn feedback_events_record_decisions_and_can_be_undone() {
         .expect("optional")
         .is_none());
 }
+
+struct PathEmbedder;
+
+impl picker_ml::Embedder for PathEmbedder {
+    fn embed_image(
+        &self,
+        path: &std::path::Path,
+    ) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        Ok(match name {
+            "one.png" | "three.png" | "five.png" => vec![1.0, 0.0],
+            "blue.png" => vec![0.0, 1.0],
+            "cyan.png" => vec![0.1, 0.9],
+            _ => vec![0.0, 1.0],
+        })
+    }
+
+    fn embed_text(&self, _text: &str) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        Ok(vec![1.0, 0.0])
+    }
+
+    fn dimensions(&self) -> usize {
+        2
+    }
+
+    fn model_id(&self) -> &str {
+        "path"
+    }
+
+    fn model_version(&self) -> &str {
+        "1"
+    }
+}
+
+fn asset_id_named(library: &Library, name: &str) -> i64 {
+    for asset in library.asset_page(0, 100).expect("page").items {
+        if library
+            .store()
+            .locations()
+            .list_for_asset(asset.id)
+            .expect("locations")
+            .iter()
+            .any(|location| location.relative_path.ends_with(name))
+        {
+            return asset.id;
+        }
+    }
+    panic!("asset {name} not found");
+}
+
+#[test]
+fn custom_prototype_suggestions_follow_confirmed_examples() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    for (index, name) in ["one.png", "three.png", "five.png", "blue.png", "cyan.png"]
+        .into_iter()
+        .enumerate()
+    {
+        fs::write(media.path().join(name), png_bytes(10 + index as u8)).expect("write");
+    }
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    library
+        .set_embedder(Some(std::sync::Arc::new(PathEmbedder)))
+        .expect("embedder");
+    library.index_embeddings(10).expect("index");
+    let tag = library
+        .create_tag("robot", "ロボット", None, None)
+        .expect("tag");
+    let tag = library.convert_tag_to_custom(tag.id).expect("custom");
+    let positives = ["one.png", "three.png", "five.png"].map(|name| asset_id_named(&library, name));
+    library
+        .set_tag_on_assets(&positives, tag.id, picker_store::TagState::Confirmed)
+        .expect("positives");
+    library
+        .suggest_custom_tag(tag.id, 10)
+        .expect("first suggest");
+    let cyan = asset_id_named(&library, "cyan.png");
+    assert!(library
+        .store()
+        .tag_assignments()
+        .get_optional(cyan, tag.id)
+        .expect("assignment")
+        .is_none());
+
+    let blue = asset_id_named(&library, "blue.png");
+    library
+        .set_tag_on_assets(&[blue], tag.id, picker_store::TagState::Confirmed)
+        .expect("new positive");
+    library
+        .suggest_custom_tag(tag.id, 10)
+        .expect("second suggest");
+    let suggestion = library
+        .store()
+        .tag_assignments()
+        .get(cyan, tag.id)
+        .expect("candidate");
+    assert_eq!(suggestion.state, picker_store::TagState::Suggested);
+    assert_eq!(
+        suggestion.source,
+        picker_store::AssignmentSource::CustomClassifier
+    );
+}

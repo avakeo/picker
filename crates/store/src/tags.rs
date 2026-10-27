@@ -191,6 +191,18 @@ impl<'connection> TagRepository<'connection> {
             .map_err(StoreError::from)
     }
 
+    pub fn convert_to_custom(&self, id: i64) -> Result<Tag> {
+        let changed = self.connection.execute(
+            "UPDATE tags SET namespace = 'custom', origin = 'user', updated_at = unixepoch()
+             WHERE id = ?1",
+            [id],
+        )?;
+        if changed == 0 {
+            return Err(StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows));
+        }
+        self.get(id)
+    }
+
     pub fn rename(&self, id: i64, canonical_name: &str, display_name_ja: &str) -> Result<Tag> {
         validate_nonempty("canonical_name", canonical_name)?;
         validate_nonempty("display_name_ja", display_name_ja)?;
@@ -432,6 +444,30 @@ pub struct TagAssignmentRepository<'connection> {
 impl<'connection> TagAssignmentRepository<'connection> {
     pub(crate) const fn new(connection: &'connection Connection) -> Self {
         Self { connection }
+    }
+
+    pub fn list_for_tag(&self, tag_id: i64, state: TagState) -> Result<Vec<TagAssignment>> {
+        let mut statement = self.connection.prepare(
+            "SELECT asset_id, tag_id, state, source, confidence, model_id, model_version, updated_at
+             FROM tag_assignments WHERE tag_id = ?1 AND state = ?2 ORDER BY asset_id",
+        )?;
+        let rows = statement.query_map(params![tag_id, state.as_str()], assignment_from_row)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(StoreError::from)
+    }
+
+    pub fn clear_suggested(
+        &self,
+        asset_id: i64,
+        tag_id: i64,
+        source: AssignmentSource,
+    ) -> Result<()> {
+        self.connection.execute(
+            "DELETE FROM tag_assignments
+             WHERE asset_id = ?1 AND tag_id = ?2 AND state = 'suggested' AND source = ?3",
+            params![asset_id, tag_id, source.as_str()],
+        )?;
+        Ok(())
     }
 
     pub fn list_for_asset(&self, asset_id: i64) -> Result<Vec<TagAssignment>> {

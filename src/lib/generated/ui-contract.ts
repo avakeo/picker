@@ -83,7 +83,11 @@ export type ViewportRequest = { assetIds: Array<string>, };
 
 export type FinderRevealRequest = { assetId: string, locationId: string, };
 
-export type TagView = { id: string, canonicalName: string, displayNameJa: string, displayNameEn: string | null, parentId: string | null, color: string | null, origin: string, assetCount: number, };
+export type TagView = { id: string, namespace: string, canonicalName: string, displayNameJa: string, displayNameEn: string | null, parentId: string | null, color: string | null, origin: string, assetCount: number, };
+
+export type TagIdRequest = { id: string, };
+
+export type CustomSuggestRequest = { tagId: string, limit: number, };
 
 export type TagAliasView = { id: string, tagId: string, alias: string, };
 
@@ -153,6 +157,8 @@ export const COMMANDS = {
            resumeIndex: "resume_index",
            tagsList: "tags_list",
            tagCreate: "tag_create",
+           tagConvertToCustom: "tag_convert_to_custom",
+           customSuggest: "custom_suggest",
            tagRename: "tag_rename",
            tagDelete: "tag_delete",
            tagSetParent: "tag_set_parent",

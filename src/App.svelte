@@ -12,7 +12,9 @@
     assignTag,
     createAlbum,
     autoTag,
+    convertTagToCustom,
     createTag,
+    customSuggest,
     deleteAlbum,
     embeddingStatus,
     deleteTag,
@@ -537,6 +539,21 @@
     });
   }
 
+  async function handleConvertToCustom(tag: TagView) {
+    await guard(async () => {
+      await convertTagToCustom(tag.id);
+      tags = await listTags();
+    });
+  }
+
+  async function handleCustomSuggest(tag: TagView) {
+    await guard(async () => {
+      await customSuggest(tag.id, 50);
+      if (detail) detail = await assetDetail(detail.summary.id);
+      await refreshPage(true);
+    });
+  }
+
   async function handleCreateTag() {
     if (!newCanonical.trim()) return;
     await guard(async () => {
@@ -840,6 +857,11 @@
                 <strong>{tag.displayNameJa}</strong>
                 <span class="muted">{tag.canonicalName} · {tag.assetCount}</span>
                 <button type="button" onclick={() => beginRename(tag)}>改名</button>
+                {#if tag.namespace !== "custom"}
+                  <button type="button" disabled={busy} onclick={() => void handleConvertToCustom(tag)}>カスタム化</button>
+                {:else}
+                  <button type="button" disabled={busy} onclick={() => void handleCustomSuggest(tag)}>候補更新</button>
+                {/if}
                 <button type="button" class:danger={armedDeleteId === tag.id} disabled={busy} onclick={() => void handleDeleteTag(tag.id)}>
                   {armedDeleteId === tag.id ? "本当に削除" : "削除"}
                 </button>
