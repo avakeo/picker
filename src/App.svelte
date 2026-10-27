@@ -1,4 +1,6 @@
 <script lang="ts">
+  import GridBenchmark from "./t0-6/GridBenchmark.svelte";
+
   const appName = "Picker";
 </script>
 
@@ -8,5 +10,5 @@
 
 <main>
   <h1>{appName}</h1>
-  <p>ローカル画像管理アプリの初期画面です。</p>
+  <GridBenchmark />
 </main>

@@ -3,6 +3,7 @@
 //! Tauri application bootstrap library.
 
 pub mod contract;
+mod thumbnail_protocol;
 
 use contract::AppInfo;
 
@@ -21,6 +22,9 @@ fn get_app_info() -> AppInfo {
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![get_app_info])
+        .register_uri_scheme_protocol("asset", |_context, request| {
+            thumbnail_protocol::handle(request)
+        })
         .setup(|_app| {
             let _core = create_core();
             Ok(())
