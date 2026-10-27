@@ -22,9 +22,14 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "asset_exif",
         sql: include_str!("../migrations/0002_asset_exif.sql"),
     },
+    Migration {
+        version: 3,
+        name: "tags",
+        sql: include_str!("../migrations/0003_tags.sql"),
+    },
 ];
 
-pub const LATEST_SCHEMA_VERSION: u32 = 2;
+pub const LATEST_SCHEMA_VERSION: u32 = 3;
 
 pub(crate) fn migrate(connection: &Connection) -> Result<()> {
     connection.execute_batch(

@@ -200,3 +200,107 @@ pub struct NearDuplicate {
     pub right_asset_id: i64,
     pub distance: u32,
 }
+
+string_enum!(TagOrigin {
+    User => "user",
+    ZeroShot => "zero_shot",
+    CustomClassifier => "custom_classifier",
+    Vision => "vision",
+    Danbooru => "danbooru",
+    Rating => "rating",
+    Laya => "laya",
+});
+string_enum!(TagState {
+    Suggested => "suggested",
+    Confirmed => "confirmed",
+    Rejected => "rejected",
+});
+string_enum!(AssignmentSource {
+    ZeroShot => "zero_shot",
+    CustomClassifier => "custom_classifier",
+    User => "user",
+    Vision => "vision",
+    Danbooru => "danbooru",
+    Rating => "rating",
+    Laya => "laya",
+});
+string_enum!(TagMatchMode {
+    All => "all",
+    Any => "any",
+    None => "none",
+});
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tag {
+    pub id: i64,
+    pub namespace: String,
+    pub canonical_name: String,
+    pub display_name_ja: String,
+    pub display_name_en: Option<String>,
+    pub parent_id: Option<i64>,
+    pub color: Option<String>,
+    pub origin: TagOrigin,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewTag<'a> {
+    pub namespace: &'a str,
+    pub canonical_name: &'a str,
+    pub display_name_ja: &'a str,
+    pub display_name_en: Option<&'a str>,
+    pub parent_id: Option<i64>,
+    pub color: Option<&'a str>,
+    pub origin: TagOrigin,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagAlias {
+    pub id: i64,
+    pub tag_id: i64,
+    pub alias: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagAssignment {
+    pub asset_id: i64,
+    pub tag_id: i64,
+    pub state: TagState,
+    pub source: AssignmentSource,
+    pub confidence: Option<f64>,
+    pub model_id: Option<String>,
+    pub model_version: Option<String>,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagWithCount {
+    pub tag: Tag,
+    pub asset_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagFilter {
+    pub tag_ids: Vec<i64>,
+    pub mode: TagMatchMode,
+    pub include_suggested: bool,
+}
+
+impl Default for TagFilter {
+    fn default() -> Self {
+        Self {
+            tag_ids: Vec::new(),
+            mode: TagMatchMode::All,
+            include_suggested: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AssetFilter {
+    pub tags: TagFilter,
+    pub formats: Vec<String>,
+    pub min_width: Option<u32>,
+    pub min_height: Option<u32>,
+    pub captured_from: Option<i64>,
+    pub captured_to: Option<i64>,
+}

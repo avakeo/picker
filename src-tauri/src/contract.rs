@@ -118,6 +118,18 @@ pub fn generated_typescript() -> String {
         AssetSearchRequest::decl(&config),
         ViewportRequest::decl(&config),
         FinderRevealRequest::decl(&config),
+        TagView::decl(&config),
+        TagAliasView::decl(&config),
+        AssetTagView::decl(&config),
+        TagCreateRequest::decl(&config),
+        TagRenameRequest::decl(&config),
+        TagParentRequest::decl(&config),
+        TagMergeRequest::decl(&config),
+        TagAliasRequest::decl(&config),
+        TagAliasDeleteRequest::decl(&config),
+        TagAssignRequest::decl(&config),
+        TagRemoveRequest::decl(&config),
+        AssetFilterRequest::decl(&config),
     ]
     .map(|declaration| {
         let declaration = declaration
@@ -146,6 +158,19 @@ pub fn generated_typescript() -> String {
            indexStatus: \"index_status\",
            pauseIndex: \"pause_index\",
            resumeIndex: \"resume_index\",
+           tagsList: \"tags_list\",
+           tagCreate: \"tag_create\",
+           tagRename: \"tag_rename\",
+           tagDelete: \"tag_delete\",
+           tagSetParent: \"tag_set_parent\",
+           tagMerge: \"tag_merge\",
+           tagAliases: \"tag_aliases\",
+           tagAddAlias: \"tag_add_alias\",
+           tagRemoveAlias: \"tag_remove_alias\",
+           tagAssign: \"tag_assign\",
+           tagRemove: \"tag_remove\",
+           assetFilter: \"asset_filter\",
+           duplicatesList: \"duplicates_list\",
          }} as const;\n\
          export const EVENTS = {{ indexProgressChanged: \"{}\" }} as const;\n",
         declarations.join("\n\n"),
@@ -266,6 +291,7 @@ pub struct AssetDetailView {
     pub file_size: u64,
     pub locations: Vec<LocationView>,
     pub metadata: Option<AssetMetadataView>,
+    pub tags: Vec<AssetTagView>,
 }
 
 /// Per-stage indexing progress.
@@ -339,4 +365,133 @@ pub struct ViewportRequest {
 pub struct FinderRevealRequest {
     pub asset_id: String,
     pub location_id: String,
+}
+
+/// A tag definition with its confirmed asset count.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagView {
+    pub id: String,
+    pub canonical_name: String,
+    pub display_name_ja: String,
+    pub display_name_en: Option<String>,
+    pub parent_id: Option<String>,
+    pub color: Option<String>,
+    pub origin: String,
+    pub asset_count: u32,
+}
+
+/// An alias attached to a tag.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagAliasView {
+    pub id: String,
+    pub tag_id: String,
+    pub alias: String,
+}
+
+/// A tag shown in the detail panel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AssetTagView {
+    pub tag_id: String,
+    pub canonical_name: String,
+    pub display_name_ja: String,
+    pub state: String,
+    pub source: String,
+    pub confidence: Option<f64>,
+}
+
+/// Request for `tag_create`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagCreateRequest {
+    pub canonical_name: String,
+    pub display_name_ja: String,
+    pub parent_id: Option<String>,
+    pub color: Option<String>,
+}
+
+/// Request for `tag_rename`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagRenameRequest {
+    pub id: String,
+    pub canonical_name: String,
+    pub display_name_ja: String,
+}
+
+/// Request for `tag_set_parent`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagParentRequest {
+    pub id: String,
+    pub parent_id: Option<String>,
+}
+
+/// Request for `tag_merge`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagMergeRequest {
+    pub source_id: String,
+    pub target_id: String,
+}
+
+/// Request for `tag_add_alias`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagAliasRequest {
+    pub tag_id: String,
+    pub alias: String,
+}
+
+/// Request for `tag_remove_alias`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagAliasDeleteRequest {
+    pub id: String,
+}
+
+/// Request for assigning a confirmed tag to one or more assets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagAssignRequest {
+    pub asset_ids: Vec<String>,
+    pub tag_id: String,
+}
+
+/// Request for removing a user tag from one or more assets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagRemoveRequest {
+    pub asset_ids: Vec<String>,
+    pub tag_id: String,
+}
+
+/// Request for `asset_filter`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AssetFilterRequest {
+    pub cursor: Option<String>,
+    pub page_size: u32,
+    pub tag_ids: Vec<String>,
+    pub tag_mode: String,
+    pub include_suggested: bool,
+    pub formats: Vec<String>,
+    pub min_width: Option<u32>,
+    pub min_height: Option<u32>,
+    pub captured_from: Option<i64>,
+    pub captured_to: Option<i64>,
 }

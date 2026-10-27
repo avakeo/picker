@@ -9,8 +9,9 @@ use picker_imaging::{
 };
 use picker_indexer::{IdentityReport, IdentityResolver};
 use picker_store::{
-    Asset, AssetMetadata, Location, LocationStatus, NewRoot, Root, RootStatus, Stage, StageStatus,
-    StageTarget, Store, StoreError,
+    Asset, AssetFilter, AssetMetadata, Location, LocationStatus, NewRoot, NewTag, Root, RootStatus,
+    Stage, StageStatus, StageTarget, Store, StoreError, Tag, TagAlias, TagAssignment, TagOrigin,
+    TagState,
 };
 
 /// Errors returned by the application-independent library service.
@@ -98,6 +99,13 @@ pub struct LocationView {
     pub status: LocationStatus,
 }
 
+/// A tag attached to an asset.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssetTag {
+    pub assignment: TagAssignment,
+    pub tag: Tag,
+}
+
 /// Detail panel data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AssetDetail {
@@ -105,6 +113,7 @@ pub struct AssetDetail {
     pub file_size: u64,
     pub locations: Vec<LocationView>,
     pub metadata: Option<AssetMetadata>,
+    pub tags: Vec<AssetTag>,
 }
 
 /// Root information for the folder tree.
@@ -326,12 +335,134 @@ impl Library {
                 status: location.status,
             });
         }
+        let mut tags = Vec::new();
+        for assignment in self.store.tag_assignments().list_for_asset(asset_id)? {
+            if let Ok(tag) = self.store.tags().get(assignment.tag_id) {
+                tags.push(AssetTag { assignment, tag });
+            }
+        }
         Ok(AssetDetail {
             summary,
             file_size: asset.file_size,
             locations,
             metadata: self.store.assets().metadata(asset_id)?,
+            tags,
         })
+    }
+
+    pub fn list_tags(&self) -> Result<Vec<picker_store::TagWithCount>> {
+        Ok(self.store.tags().list_with_counts()?)
+    }
+
+    pub fn create_tag(
+        &self,
+        canonical_name: &str,
+        display_name_ja: &str,
+        parent_id: Option<i64>,
+        color: Option<&str>,
+    ) -> Result<Tag> {
+        Ok(self.store.tags().create(&NewTag {
+            namespace: "user",
+            canonical_name,
+            display_name_ja,
+            display_name_en: None,
+            parent_id,
+            color,
+            origin: TagOrigin::User,
+        })?)
+    }
+
+    pub fn rename_tag(
+        &self,
+        tag_id: i64,
+        canonical_name: &str,
+        display_name_ja: &str,
+    ) -> Result<Tag> {
+        Ok(self
+            .store
+            .tags()
+            .rename(tag_id, canonical_name, display_name_ja)?)
+    }
+
+    pub fn set_tag_parent(&self, tag_id: i64, parent_id: Option<i64>) -> Result<Tag> {
+        Ok(self.store.tags().set_parent(tag_id, parent_id)?)
+    }
+
+    pub fn delete_tag(&self, tag_id: i64) -> Result<bool> {
+        Ok(self.store.tags().delete(tag_id)?)
+    }
+
+    pub fn merge_tags(&self, source_id: i64, target_id: i64) -> Result<Tag> {
+        Ok(self.store.tags().merge(source_id, target_id)?)
+    }
+
+    pub fn add_tag_alias(&self, tag_id: i64, alias: &str) -> Result<TagAlias> {
+        Ok(self.store.tags().add_alias(tag_id, alias)?)
+    }
+
+    pub fn remove_tag_alias(&self, alias_id: i64) -> Result<bool> {
+        Ok(self.store.tags().remove_alias(alias_id)?)
+    }
+
+    pub fn tag_aliases(&self, tag_id: i64) -> Result<Vec<TagAlias>> {
+        Ok(self.store.tags().aliases(tag_id)?)
+    }
+
+    /// Applies or removes a confirmed tag on several assets at once.
+    pub fn set_tag_on_assets(
+        &self,
+        asset_ids: &[i64],
+        tag_id: i64,
+        state: TagState,
+    ) -> Result<usize> {
+        Ok(self
+            .store
+            .tag_assignments()
+            .set_user_many(asset_ids, tag_id, state)?)
+    }
+
+    pub fn remove_tag_from_assets(&self, asset_ids: &[i64], tag_id: i64) -> Result<usize> {
+        Ok(self
+            .store
+            .tag_assignments()
+            .remove_user_many(asset_ids, tag_id)?)
+    }
+
+    /// Applies tag, attribute, and cursor filters in the database.
+    pub fn filter_page(
+        &self,
+        filter: &AssetFilter,
+        after_id: i64,
+        limit: u32,
+    ) -> Result<AssetPage> {
+        let limit = limit.clamp(1, 500);
+        let assets = self
+            .store
+            .asset_filters()
+            .page(filter, after_id, limit + 1)?;
+        let has_more = assets.len() > limit as usize;
+        let items = assets
+            .into_iter()
+            .take(limit as usize)
+            .map(|asset| self.summary(asset))
+            .collect::<Result<Vec<_>>>()?;
+        let next_cursor = has_more.then(|| items.last().map(|item| item.id)).flatten();
+        Ok(AssetPage {
+            items,
+            next_cursor,
+            total: self.store.asset_filters().count(filter)?,
+            total_is_exact: true,
+        })
+    }
+
+    /// Returns assets that have more than one location.
+    pub fn exact_duplicate_assets(&self) -> Result<Vec<AssetSummary>> {
+        self.store
+            .assets()
+            .exact_duplicates()?
+            .into_iter()
+            .map(|asset| self.summary(asset))
+            .collect()
     }
 
     pub fn thumbnail_path(&self, asset_id: i64, size: ThumbnailSize) -> PathBuf {

@@ -8,8 +8,8 @@ mod library;
 mod tests;
 
 pub use library::{
-    AssetDetail, AssetPage, AssetSummary, IndexStatus, Library, LibraryError, LocationView, Result,
-    RootSummary, StageProgress, ThumbnailState,
+    AssetDetail, AssetPage, AssetSummary, AssetTag, IndexStatus, Library, LibraryError,
+    LocationView, Result, RootSummary, StageProgress, ThumbnailState,
 };
 
 /// Entry point for application-independent core services.

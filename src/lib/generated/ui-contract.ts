@@ -65,7 +65,7 @@ export type LocationView = { id: string, rootId: string, relativePath: string, a
 
 export type AssetMetadataView = { cameraMake: string | null, cameraModel: string | null, lens: string | null, exposureTime: string | null, fNumber: number | null, iso: number | null, focalLengthMm: number | null, gpsLatitude: number | null, gpsLongitude: number | null, };
 
-export type AssetDetailView = { summary: AssetSummaryView, fileSize: bigint, locations: Array<LocationView>, metadata: AssetMetadataView | null, };
+export type AssetDetailView = { summary: AssetSummaryView, fileSize: bigint, locations: Array<LocationView>, metadata: AssetMetadataView | null, tags: Array<AssetTagView>, };
 
 export type StageProgressView = { stage: string, completed: number, pending: number, failed: number, };
 
@@ -83,6 +83,30 @@ export type ViewportRequest = { assetIds: Array<string>, };
 
 export type FinderRevealRequest = { assetId: string, locationId: string, };
 
+export type TagView = { id: string, canonicalName: string, displayNameJa: string, displayNameEn: string | null, parentId: string | null, color: string | null, origin: string, assetCount: number, };
+
+export type TagAliasView = { id: string, tagId: string, alias: string, };
+
+export type AssetTagView = { tagId: string, canonicalName: string, displayNameJa: string, state: string, source: string, confidence: number | null, };
+
+export type TagCreateRequest = { canonicalName: string, displayNameJa: string, parentId: string | null, color: string | null, };
+
+export type TagRenameRequest = { id: string, canonicalName: string, displayNameJa: string, };
+
+export type TagParentRequest = { id: string, parentId: string | null, };
+
+export type TagMergeRequest = { sourceId: string, targetId: string, };
+
+export type TagAliasRequest = { tagId: string, alias: string, };
+
+export type TagAliasDeleteRequest = { id: string, };
+
+export type TagAssignRequest = { assetIds: Array<string>, tagId: string, };
+
+export type TagRemoveRequest = { assetIds: Array<string>, tagId: string, };
+
+export type AssetFilterRequest = { cursor: string | null, pageSize: number, tagIds: Array<string>, tagMode: string, includeSuggested: boolean, formats: Array<string>, minWidth: number | null, minHeight: number | null, capturedFrom: bigint | null, capturedTo: bigint | null, };
+
 export const COMMANDS = {
            getAppInfo: "get_app_info",
            rootsList: "roots_list",
@@ -97,5 +121,18 @@ export const COMMANDS = {
            indexStatus: "index_status",
            pauseIndex: "pause_index",
            resumeIndex: "resume_index",
+           tagsList: "tags_list",
+           tagCreate: "tag_create",
+           tagRename: "tag_rename",
+           tagDelete: "tag_delete",
+           tagSetParent: "tag_set_parent",
+           tagMerge: "tag_merge",
+           tagAliases: "tag_aliases",
+           tagAddAlias: "tag_add_alias",
+           tagRemoveAlias: "tag_remove_alias",
+           tagAssign: "tag_assign",
+           tagRemove: "tag_remove",
+           assetFilter: "asset_filter",
+           duplicatesList: "duplicates_list",
          } as const;
 export const EVENTS = { indexProgressChanged: "index-progress-changed" } as const;
