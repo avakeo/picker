@@ -2,8 +2,11 @@
 
 //! Tauri application bootstrap library.
 
+mod commands;
 pub mod contract;
 mod thumbnail_protocol;
+
+use std::fs;
 
 use contract::AppInfo;
 
@@ -21,11 +24,34 @@ fn get_app_info() -> AppInfo {
 /// Starts the Tauri desktop application.
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_app_info])
+        .invoke_handler(tauri::generate_handler![
+            get_app_info,
+            commands::roots_list,
+            commands::root_add,
+            commands::root_remove,
+            commands::root_set_enabled,
+            commands::rescan_root,
+            commands::asset_search,
+            commands::asset_detail,
+            commands::finder_reveal,
+            commands::viewport_update,
+            commands::index_status,
+            commands::pause_index,
+            commands::resume_index,
+        ])
         .register_uri_scheme_protocol("asset", |_context, request| {
             thumbnail_protocol::handle(request)
         })
-        .setup(|_app| {
+        .setup(|app| {
+            use tauri::Manager;
+
+            let data_dir = app.path().app_data_dir()?;
+            fs::create_dir_all(&data_dir)?;
+            let database = commands::default_database(&data_dir);
+            let cache = commands::default_cache(&data_dir);
+            let library = picker_core::Library::open(&database, &cache)?;
+            thumbnail_protocol::set_cache_root(library.cache_root().to_path_buf());
+            app.manage(commands::AppState::new(library));
             let _core = create_core();
             Ok(())
         })
@@ -43,6 +69,23 @@ pub const fn create_core() -> picker_core::Core {
 mod tests {
     use super::*;
     use crate::contract::{CommandContract, GetAppInfo, GetAppInfoRequest};
+
+    #[test]
+    fn ids_and_paths_are_bounded() {
+        assert!(commands::parse_id("1").is_ok());
+        assert!(commands::parse_id("0").is_err());
+        assert!(commands::parse_id("-1").is_err());
+        assert!(commands::parse_id("../../etc/passwd").is_err());
+        let data = std::path::Path::new("/tmp/picker");
+        assert_eq!(
+            commands::default_database(data),
+            std::path::PathBuf::from("/tmp/picker/library.sqlite3")
+        );
+        assert_eq!(
+            commands::default_cache(data),
+            std::path::PathBuf::from("/tmp/picker/thumbnails")
+        );
+    }
 
     #[test]
     fn sample_app_info_command_matches_the_wire_contract() {
