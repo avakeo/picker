@@ -392,3 +392,48 @@ fn asset_metadata_round_trips_and_rejects_unknown_assets() -> Result<()> {
     assert!(store.assets().set_metadata(&missing).is_err());
     Ok(())
 }
+
+#[test]
+fn duplicate_queries_find_exact_and_near_matches() -> Result<()> {
+    let temporary = TempDir::new().expect("create temporary directory");
+    let store = Store::open(temporary.path().join("library.sqlite3"))?;
+    let created_root = store.roots().insert(&root("/library/photos", "写真"))?;
+    let first = store.assets().insert(&asset(1))?;
+    let second = store.assets().insert(&asset(2))?;
+    let third = store.assets().insert(&asset(3))?;
+    for (asset_id, path) in [
+        (first.id, "one.jpg"),
+        (first.id, "copy/one.jpg"),
+        (second.id, "two.jpg"),
+        (third.id, "three.jpg"),
+    ] {
+        store.locations().insert(&NewLocation {
+            asset_id,
+            root_id: created_root.id,
+            relative_path: path,
+            modified_at: 1,
+            status: LocationStatus::Present,
+        })?;
+    }
+    let exact = store.assets().exact_duplicates()?;
+    assert_eq!(exact.len(), 1);
+    assert_eq!(exact[0].id, first.id);
+
+    store
+        .assets()
+        .set_perceptual_hash(first.id, &[0b1010_1010; 8])?;
+    let mut second_hash = [0b1010_1010; 8];
+    second_hash[0] = 0b1010_1011;
+    store
+        .assets()
+        .set_perceptual_hash(second.id, &second_hash)?;
+    store.assets().set_perceptual_hash(third.id, &[0; 8])?;
+    let near = store.assets().near_duplicates(2, 10)?;
+    assert_eq!(near.len(), 1);
+    assert_eq!(near[0].left_asset_id, first.id);
+    assert_eq!(near[0].right_asset_id, second.id);
+    assert_eq!(near[0].distance, 1);
+
+    assert!(store.assets().near_duplicates(1, 1)?.len() == 1);
+    Ok(())
+}

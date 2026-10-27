@@ -192,3 +192,11 @@ pub struct AssetMetadata {
     pub gps_latitude: Option<f64>,
     pub gps_longitude: Option<f64>,
 }
+
+/// A pair of assets whose perceptual hashes are within a threshold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NearDuplicate {
+    pub left_asset_id: i64,
+    pub right_asset_id: i64,
+    pub distance: u32,
+}

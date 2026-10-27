@@ -426,3 +426,53 @@ fn parses_and_validates_exif_datetime() {
     assert_eq!(parse_exif_datetime("not a date"), None);
     assert_eq!(parse_exif_datetime("2024:13:40 25:00:00"), None);
 }
+
+#[test]
+fn perceptual_hash_matches_resized_and_recompressed_images() {
+    let source = test_image(320, 240);
+    let baseline = dhash(
+        &RustFallbackDecoder
+            .decode_bytes(
+                ImageFormat::Png,
+                &encode(&source, ImageFormat::Png),
+                &DecodeLimits::default(),
+            )
+            .expect("decode baseline"),
+    );
+
+    let resized = source.resize_exact(160, 120, image::imageops::FilterType::Triangle);
+    let transformed = dhash(
+        &RustFallbackDecoder
+            .decode_bytes(
+                ImageFormat::Jpeg,
+                &encode(&resized, ImageFormat::Jpeg),
+                &DecodeLimits::default(),
+            )
+            .expect("decode transformed"),
+    );
+    assert!(
+        is_near_duplicate(&baseline, &transformed, DEFAULT_NEAR_DUPLICATE_DISTANCE),
+        "resized/recompressed distance was {}",
+        hamming_distance(&baseline, &transformed)
+    );
+
+    let mut other = RgbaImage::new(320, 240);
+    for (x, _y, pixel) in other.enumerate_pixels_mut() {
+        let value = if (x / 40) % 2 == 0 { 250 } else { 5 };
+        *pixel = Rgba([value, value, value, 255]);
+    }
+    let unrelated = dhash(
+        &RustFallbackDecoder
+            .decode_bytes(
+                ImageFormat::Png,
+                &encode(&DynamicImage::ImageRgba8(other), ImageFormat::Png),
+                &DecodeLimits::default(),
+            )
+            .expect("decode unrelated"),
+    );
+    assert!(
+        !is_near_duplicate(&baseline, &unrelated, DEFAULT_NEAR_DUPLICATE_DISTANCE),
+        "unrelated image distance was {}",
+        hamming_distance(&baseline, &unrelated)
+    );
+}
