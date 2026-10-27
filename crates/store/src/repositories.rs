@@ -248,7 +248,7 @@ impl<'connection> AssetRepository<'connection> {
                 let distance = left_hash
                     .iter()
                     .zip(right_hash)
-                    .map(|(left, right)| u32::from((left ^ right).count_ones()))
+                    .map(|(left, right)| (left ^ right).count_ones())
                     .sum::<u32>();
                 if distance <= threshold {
                     pairs.push(NearDuplicate {
