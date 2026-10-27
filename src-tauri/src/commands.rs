@@ -14,13 +14,14 @@ use std::sync::Arc;
 use crate::contract::{
     AlbumAssetsRequest, AlbumCreateRequest, AlbumRenameRequest, AlbumReorderRequest, AlbumView,
     AssetDetailView, AssetFilterRequest, AssetMetadataView, AssetPageView, AssetSearchRequest,
-    AssetSummaryView, AssetTagView, ColorSetRequest, ColorView, EmbeddingIndexRequest,
-    EmbeddingStatusView, EventContract, FinderRevealRequest, IdRequest, IndexProgressChanged,
-    IndexProgressChangedPayload, IndexStageProgress, IndexStatusView, LocationView, ModelIdRequest,
-    ModelProgressEvent, ModelView, RootAddRequest, RootEnabledRequest, RootView,
-    SemanticSearchRequest, SimilarAssetsRequest, StageProgressView, TagAliasDeleteRequest,
-    TagAliasRequest, TagAliasView, TagAssignRequest, TagCreateRequest, TagMergeRequest,
-    TagParentRequest, TagRemoveRequest, TagRenameRequest, TagView, ViewportRequest,
+    AssetSummaryView, AssetTagView, ColorSetRequest, ColorView, CustomSuggestRequest,
+    EmbeddingIndexRequest, EmbeddingStatusView, EventContract, FinderRevealRequest, IdRequest,
+    IndexProgressChanged, IndexProgressChangedPayload, IndexStageProgress, IndexStatusView,
+    LocationView, ModelIdRequest, ModelProgressEvent, ModelView, RootAddRequest,
+    RootEnabledRequest, RootView, SemanticSearchRequest, SimilarAssetsRequest, StageProgressView,
+    TagAliasDeleteRequest, TagAliasRequest, TagAliasView, TagAssignRequest, TagCreateRequest,
+    TagIdRequest, TagMergeRequest, TagParentRequest, TagRemoveRequest, TagRenameRequest, TagView,
+    ViewportRequest,
 };
 
 /// Shared application state managed by Tauri.
@@ -160,6 +161,7 @@ fn detail_view(detail: picker_core::AssetDetail) -> AssetDetailView {
 fn tag_view(tag: picker_store::TagWithCount) -> TagView {
     TagView {
         id: tag.tag.id.to_string(),
+        namespace: tag.tag.namespace,
         canonical_name: tag.tag.canonical_name,
         display_name_ja: tag.tag.display_name_ja,
         display_name_en: tag.tag.display_name_en,
@@ -561,6 +563,32 @@ pub fn tag_assign(state: State<'_, AppState>, request: TagAssignRequest) -> Comm
     state
         .library()
         .set_tag_on_assets(&ids, tag_id, TagState::Confirmed)
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn tag_convert_to_custom(
+    state: State<'_, AppState>,
+    request: TagIdRequest,
+) -> CommandResult<TagView> {
+    let id = parse_id(&request.id)?;
+    state.library().convert_tag_to_custom(id).map_err(error)?;
+    let tags = state.library().list_tags().map_err(error)?;
+    tags.into_iter()
+        .find(|tag| tag.tag.id == id)
+        .map(tag_view)
+        .ok_or_else(|| "tag not found".to_owned())
+}
+
+#[tauri::command]
+pub fn custom_suggest(
+    state: State<'_, AppState>,
+    request: CustomSuggestRequest,
+) -> CommandResult<usize> {
+    let tag_id = parse_id(&request.tag_id)?;
+    state
+        .library()
+        .suggest_custom_tag(tag_id, request.limit)
         .map_err(error)
 }
 

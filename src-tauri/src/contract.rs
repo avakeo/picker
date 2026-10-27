@@ -119,6 +119,8 @@ pub fn generated_typescript() -> String {
         ViewportRequest::decl(&config),
         FinderRevealRequest::decl(&config),
         TagView::decl(&config),
+        TagIdRequest::decl(&config),
+        CustomSuggestRequest::decl(&config),
         TagAliasView::decl(&config),
         AssetTagView::decl(&config),
         TagCreateRequest::decl(&config),
@@ -175,6 +177,8 @@ pub fn generated_typescript() -> String {
            resumeIndex: \"resume_index\",
            tagsList: \"tags_list\",
            tagCreate: \"tag_create\",
+           tagConvertToCustom: \"tag_convert_to_custom\",
+           customSuggest: \"custom_suggest\",
            tagRename: \"tag_rename\",
            tagDelete: \"tag_delete\",
            tagSetParent: \"tag_set_parent\",
@@ -408,6 +412,7 @@ pub struct FinderRevealRequest {
 #[ts(rename_all = "camelCase")]
 pub struct TagView {
     pub id: String,
+    pub namespace: String,
     pub canonical_name: String,
     pub display_name_ja: String,
     pub display_name_en: Option<String>,
@@ -438,6 +443,23 @@ pub struct AssetTagView {
     pub state: String,
     pub source: String,
     pub confidence: Option<f64>,
+}
+
+/// Request naming one tag.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct TagIdRequest {
+    pub id: String,
+}
+
+/// Request to recompute custom-tag candidates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct CustomSuggestRequest {
+    pub tag_id: String,
+    pub limit: u32,
 }
 
 /// Request for `tag_create`.

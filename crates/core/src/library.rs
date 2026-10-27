@@ -989,6 +989,124 @@ impl Library {
         Ok(changed)
     }
 
+    pub fn convert_tag_to_custom(&self, tag_id: i64) -> Result<Tag> {
+        Ok(self.store.tags().convert_to_custom(tag_id)?)
+    }
+
+    /// Recomputes prototype (or tag-name) suggestions for one custom tag.
+    pub fn suggest_custom_tag(&self, tag_id: i64, limit: u32) -> Result<usize> {
+        const STAGE_VERSION: &str = "prototype-v1";
+        let embedder = self
+            .embedder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or_else(|| LibraryError::InvalidInput("埋め込みモデルが未設定です。".to_owned()))?;
+        let (model_id, model_version) = {
+            let vectors = self
+                .vectors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let state = vectors.as_ref().ok_or_else(|| {
+                LibraryError::InvalidInput("埋め込みモデルが未設定です。".to_owned())
+            })?;
+            (state.model_id.clone(), state.model_version.clone())
+        };
+        let tag = self.store.tags().get(tag_id)?;
+        if tag.namespace != "custom" {
+            return Err(LibraryError::InvalidInput(
+                "custom suggestions require a custom tag".to_owned(),
+            ));
+        }
+        let positives = self
+            .store
+            .tag_assignments()
+            .list_for_tag(tag_id, TagState::Confirmed)?;
+        let mut prototype = Vec::new();
+        for assignment in &positives {
+            if let Some(embedding) =
+                self.store
+                    .embeddings()
+                    .get(assignment.asset_id, &model_id, &model_version)?
+            {
+                prototype.push(embedding.vector);
+            }
+        }
+        let query = if prototype.len() >= 3 {
+            let mut average = vec![0.0_f32; embedder.dimensions()];
+            for vector in &prototype {
+                if vector.len() != average.len() {
+                    return Err(LibraryError::InvalidInput(
+                        "embedding dimensions do not match the model".to_owned(),
+                    ));
+                }
+                for (sum, value) in average.iter_mut().zip(vector) {
+                    *sum += value;
+                }
+            }
+            let norm = average
+                .iter()
+                .map(|value| f64::from(*value) * f64::from(*value))
+                .sum::<f64>()
+                .sqrt();
+            if norm > 0.0 {
+                for value in &mut average {
+                    *value = (f64::from(*value) / norm) as f32;
+                }
+            }
+            average
+        } else {
+            embedder
+                .embed_text(&format!("{} {}", tag.display_name_ja, tag.canonical_name))
+                .map_err(|error| LibraryError::InvalidInput(error.to_string()))?
+        };
+        let results = {
+            let vectors = self
+                .vectors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            vectors
+                .as_ref()
+                .expect("checked above")
+                .index
+                .search(&query, 500)
+                .map_err(|error| LibraryError::InvalidInput(error.to_string()))?
+        };
+        let threshold = if prototype.len() >= 3 {
+            0.35_f32
+        } else {
+            0.30_f32
+        };
+        let cap = limit.clamp(1, 500) as usize;
+        let mut suggested = 0;
+        for (asset_id, score) in results {
+            self.store.tag_assignments().clear_suggested(
+                asset_id,
+                tag_id,
+                picker_store::AssignmentSource::CustomClassifier,
+            )?;
+            if score >= threshold && suggested < cap {
+                self.store.tag_assignments().upsert_suggested(
+                    asset_id,
+                    tag_id,
+                    picker_store::AssignmentSource::CustomClassifier,
+                    f64::from(score),
+                    &model_id,
+                    &model_version,
+                )?;
+                suggested += 1;
+            }
+            self.store.stage_states().upsert(
+                StageTarget::Asset(asset_id),
+                Stage::CustomSuggest,
+                StageStatus::Succeeded,
+                STAGE_VERSION,
+                None,
+            )?;
+        }
+        Ok(suggested)
+    }
+
     /// Restores the assignment that a feedback event replaced.
     pub fn undo_feedback(&self, event_id: i64) -> Result<FeedbackEvent> {
         let event = self
