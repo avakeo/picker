@@ -5,14 +5,17 @@ use std::{
 };
 
 use picker_core::{Library, ThumbnailState};
-use picker_store::{LocationStatus, RootStatus};
+use picker_store::{AssetFilter, LocationStatus, RootStatus, TagFilter, TagMatchMode, TagState};
 use tauri::State;
 
 use crate::contract::{
-    AssetDetailView, AssetMetadataView, AssetPageView, AssetSearchRequest, AssetSummaryView,
-    EventContract, FinderRevealRequest, IdRequest, IndexProgressChanged,
-    IndexProgressChangedPayload, IndexStageProgress, IndexStatusView, LocationView, RootAddRequest,
-    RootEnabledRequest, RootView, StageProgressView, ViewportRequest,
+    AssetDetailView, AssetFilterRequest, AssetMetadataView, AssetPageView, AssetSearchRequest,
+    AssetSummaryView, AssetTagView, EventContract, FinderRevealRequest, IdRequest,
+    IndexProgressChanged, IndexProgressChangedPayload, IndexStageProgress, IndexStatusView,
+    LocationView, RootAddRequest, RootEnabledRequest, RootView, StageProgressView,
+    TagAliasDeleteRequest, TagAliasRequest, TagAliasView, TagAssignRequest, TagCreateRequest,
+    TagMergeRequest, TagParentRequest, TagRemoveRequest, TagRenameRequest, TagView,
+    ViewportRequest,
 };
 
 /// Shared application state managed by Tauri.
@@ -122,7 +125,58 @@ fn detail_view(detail: picker_core::AssetDetail) -> AssetDetailView {
             gps_latitude: metadata.gps_latitude,
             gps_longitude: metadata.gps_longitude,
         }),
+        tags: detail
+            .tags
+            .into_iter()
+            .map(|assigned| AssetTagView {
+                tag_id: assigned.tag.id.to_string(),
+                canonical_name: assigned.tag.canonical_name,
+                display_name_ja: assigned.tag.display_name_ja,
+                state: assigned.assignment.state.as_str().to_owned(),
+                source: assigned.assignment.source.as_str().to_owned(),
+                confidence: assigned.assignment.confidence,
+            })
+            .collect(),
     }
+}
+
+fn tag_view(tag: picker_store::TagWithCount) -> TagView {
+    TagView {
+        id: tag.tag.id.to_string(),
+        canonical_name: tag.tag.canonical_name,
+        display_name_ja: tag.tag.display_name_ja,
+        display_name_en: tag.tag.display_name_en,
+        parent_id: tag.tag.parent_id.map(|id| id.to_string()),
+        color: tag.tag.color,
+        origin: tag.tag.origin.as_str().to_owned(),
+        asset_count: tag.asset_count,
+    }
+}
+
+fn filter_from_request(request: &AssetFilterRequest) -> CommandResult<AssetFilter> {
+    let mode = match request.tag_mode.as_str() {
+        "all" => TagMatchMode::All,
+        "any" => TagMatchMode::Any,
+        "none" => TagMatchMode::None,
+        other => return Err(format!("invalid tag mode: {other}")),
+    };
+    let tag_ids = request
+        .tag_ids
+        .iter()
+        .map(|id| parse_id(id))
+        .collect::<CommandResult<Vec<_>>>()?;
+    Ok(AssetFilter {
+        tags: TagFilter {
+            tag_ids,
+            mode,
+            include_suggested: request.include_suggested,
+        },
+        formats: request.formats.clone(),
+        min_width: request.min_width,
+        min_height: request.min_height,
+        captured_from: request.captured_from,
+        captured_to: request.captured_to,
+    })
 }
 
 fn status_view(status: picker_core::IndexStatus) -> IndexStatusView {
@@ -338,4 +392,197 @@ pub(crate) fn default_database(data_dir: &Path) -> PathBuf {
 
 pub(crate) fn default_cache(data_dir: &Path) -> PathBuf {
     data_dir.join("thumbnails")
+}
+
+#[tauri::command]
+pub fn tags_list(state: State<'_, AppState>) -> CommandResult<Vec<TagView>> {
+    state
+        .library()
+        .list_tags()
+        .map(|tags| tags.into_iter().map(tag_view).collect())
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn tag_create(state: State<'_, AppState>, request: TagCreateRequest) -> CommandResult<TagView> {
+    let parent_id = request.parent_id.as_deref().map(parse_id).transpose()?;
+    let tag = state
+        .library()
+        .create_tag(
+            &request.canonical_name,
+            &request.display_name_ja,
+            parent_id,
+            request.color.as_deref(),
+        )
+        .map_err(error)?;
+    Ok(tag_view(picker_store::TagWithCount {
+        tag,
+        asset_count: 0,
+    }))
+}
+
+#[tauri::command]
+pub fn tag_rename(state: State<'_, AppState>, request: TagRenameRequest) -> CommandResult<TagView> {
+    let id = parse_id(&request.id)?;
+    let tag = state
+        .library()
+        .rename_tag(id, &request.canonical_name, &request.display_name_ja)
+        .map_err(error)?;
+    let count = state
+        .library()
+        .list_tags()
+        .map_err(error)?
+        .into_iter()
+        .find(|tag| tag.tag.id == id)
+        .map_or(0, |tag| tag.asset_count);
+    Ok(tag_view(picker_store::TagWithCount {
+        tag,
+        asset_count: count,
+    }))
+}
+
+#[tauri::command]
+pub fn tag_delete(state: State<'_, AppState>, request: IdRequest) -> CommandResult<bool> {
+    let id = parse_id(&request.id)?;
+    state.library().delete_tag(id).map_err(error)
+}
+
+#[tauri::command]
+pub fn tag_set_parent(
+    state: State<'_, AppState>,
+    request: TagParentRequest,
+) -> CommandResult<TagView> {
+    let id = parse_id(&request.id)?;
+    let parent_id = request.parent_id.as_deref().map(parse_id).transpose()?;
+    let tag = state
+        .library()
+        .set_tag_parent(id, parent_id)
+        .map_err(error)?;
+    Ok(tag_view(picker_store::TagWithCount {
+        tag,
+        asset_count: 0,
+    }))
+}
+
+#[tauri::command]
+pub fn tag_merge(state: State<'_, AppState>, request: TagMergeRequest) -> CommandResult<TagView> {
+    let source_id = parse_id(&request.source_id)?;
+    let target_id = parse_id(&request.target_id)?;
+    let tag = state
+        .library()
+        .merge_tags(source_id, target_id)
+        .map_err(error)?;
+    let count = state
+        .library()
+        .list_tags()
+        .map_err(error)?
+        .into_iter()
+        .find(|tag| tag.tag.id == target_id)
+        .map_or(0, |tag| tag.asset_count);
+    Ok(tag_view(picker_store::TagWithCount {
+        tag,
+        asset_count: count,
+    }))
+}
+
+#[tauri::command]
+pub fn tag_aliases(
+    state: State<'_, AppState>,
+    request: IdRequest,
+) -> CommandResult<Vec<TagAliasView>> {
+    let tag_id = parse_id(&request.id)?;
+    state
+        .library()
+        .tag_aliases(tag_id)
+        .map(|aliases| {
+            aliases
+                .into_iter()
+                .map(|alias| TagAliasView {
+                    id: alias.id.to_string(),
+                    tag_id: alias.tag_id.to_string(),
+                    alias: alias.alias,
+                })
+                .collect()
+        })
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn tag_add_alias(
+    state: State<'_, AppState>,
+    request: TagAliasRequest,
+) -> CommandResult<TagAliasView> {
+    let tag_id = parse_id(&request.tag_id)?;
+    let alias = state
+        .library()
+        .add_tag_alias(tag_id, &request.alias)
+        .map_err(error)?;
+    Ok(TagAliasView {
+        id: alias.id.to_string(),
+        tag_id: alias.tag_id.to_string(),
+        alias: alias.alias,
+    })
+}
+
+#[tauri::command]
+pub fn tag_remove_alias(
+    state: State<'_, AppState>,
+    request: TagAliasDeleteRequest,
+) -> CommandResult<bool> {
+    let id = parse_id(&request.id)?;
+    state.library().remove_tag_alias(id).map_err(error)
+}
+
+#[tauri::command]
+pub fn tag_assign(state: State<'_, AppState>, request: TagAssignRequest) -> CommandResult<usize> {
+    let tag_id = parse_id(&request.tag_id)?;
+    let ids = request
+        .asset_ids
+        .iter()
+        .map(|id| parse_id(id))
+        .collect::<CommandResult<Vec<_>>>()?;
+    state
+        .library()
+        .set_tag_on_assets(&ids, tag_id, TagState::Confirmed)
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn tag_remove(state: State<'_, AppState>, request: TagRemoveRequest) -> CommandResult<usize> {
+    let tag_id = parse_id(&request.tag_id)?;
+    let ids = request
+        .asset_ids
+        .iter()
+        .map(|id| parse_id(id))
+        .collect::<CommandResult<Vec<_>>>()?;
+    state
+        .library()
+        .remove_tag_from_assets(&ids, tag_id)
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn asset_filter(
+    state: State<'_, AppState>,
+    request: AssetFilterRequest,
+) -> CommandResult<AssetPageView> {
+    let after = match request.cursor.as_deref() {
+        Some(cursor) => parse_id(cursor)?,
+        None => 0,
+    };
+    let filter = filter_from_request(&request)?;
+    state
+        .library()
+        .filter_page(&filter, after, request.page_size)
+        .map(page_view)
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn duplicates_list(state: State<'_, AppState>) -> CommandResult<Vec<AssetSummaryView>> {
+    state
+        .library()
+        .exact_duplicate_assets()
+        .map(|assets| assets.into_iter().map(summary_view).collect())
+        .map_err(error)
 }

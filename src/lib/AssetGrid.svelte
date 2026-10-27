@@ -4,7 +4,7 @@
   import type { AssetSummaryView } from "./generated/ui-contract";
 
   export let items: AssetSummaryView[] = [];
-  export let selectedId = "";
+  export let selectedIds = new Set<string>();
   export let onSelect: (asset: AssetSummaryView) => void = () => {};
   export let onNearEnd: () => void = () => {};
   export let onVisible: (assetIds: string[]) => void = () => {};
@@ -62,7 +62,7 @@
       {@const row = Math.floor(absoluteIndex / columns)}
       <button
         class="grid-tile"
-        class:selected={asset.id === selectedId}
+        class:selected={selectedIds.has(asset.id)}
         style={`left: ${column * tileWidth}px; top: ${row * tileHeight}px; width: ${tileWidth}px; height: ${tileHeight}px`}
         type="button"
         aria-label={`画像 ${asset.id}`}

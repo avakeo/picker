@@ -89,3 +89,97 @@ fn invalid_asset_ids_return_errors() {
     assert!(library.asset_detail(42).is_err());
     assert_eq!(library.prioritize_viewport(&[42]).expect("priority"), 0);
 }
+
+#[test]
+fn applies_tags_and_filters_by_parent() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(1)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(2)).expect("write");
+    fs::write(media.path().join("three.png"), png_bytes(3)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("add root");
+    library.scan_root(root.id).expect("scan");
+    let page = library.asset_page(0, 10).expect("page");
+    assert_eq!(page.items.len(), 3);
+
+    let animal = library
+        .create_tag("animal", "動物", None, None)
+        .expect("parent tag");
+    let dog = library
+        .create_tag("dog", "犬", Some(animal.id), Some("#112233"))
+        .expect("child tag");
+    let updated = library
+        .set_tag_on_assets(
+            &[page.items[0].id, page.items[1].id],
+            dog.id,
+            picker_store::TagState::Confirmed,
+        )
+        .expect("assign");
+    assert_eq!(updated, 2);
+
+    let filter = picker_store::AssetFilter {
+        tags: picker_store::TagFilter {
+            tag_ids: vec![animal.id],
+            mode: picker_store::TagMatchMode::All,
+            include_suggested: false,
+        },
+        ..picker_store::AssetFilter::default()
+    };
+    let filtered = library.filter_page(&filter, 0, 10).expect("filter");
+    assert_eq!(filtered.items.len(), 2);
+    assert_eq!(filtered.total, 2);
+
+    let detail = library.asset_detail(page.items[0].id).expect("detail");
+    assert_eq!(detail.tags.len(), 1);
+    assert_eq!(detail.tags[0].tag.display_name_ja, "犬");
+
+    let tags = library.list_tags().expect("tags");
+    assert_eq!(tags.len(), 2);
+    assert_eq!(
+        tags.iter()
+            .find(|tag| tag.tag.id == dog.id)
+            .expect("dog count")
+            .asset_count,
+        2
+    );
+
+    assert_eq!(
+        library
+            .remove_tag_from_assets(&[page.items[0].id], dog.id)
+            .expect("remove"),
+        1
+    );
+    assert!(library.delete_tag(dog.id).expect("delete"));
+    assert!(library.list_tags().expect("tags").len() == 1);
+
+    let duplicate_filter = picker_store::AssetFilter::default();
+    assert_eq!(
+        library
+            .filter_page(&duplicate_filter, 0, 10)
+            .expect("all")
+            .items
+            .len(),
+        3
+    );
+    assert!(library.exact_duplicate_assets().expect("dupes").is_empty());
+}
+
+#[test]
+fn tag_hierarchy_and_alias_errors_are_typed() {
+    let cache = tempfile::tempdir().expect("cache");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.create_tag("root", "根", None, None).expect("tag");
+    let child = library
+        .create_tag("child", "子", Some(root.id), None)
+        .expect("child");
+    assert!(library.set_tag_parent(root.id, Some(child.id)).is_err());
+    library
+        .add_tag_alias(child.id, "こども")
+        .expect("add alias");
+    assert!(library.add_tag_alias(root.id, "こども").is_err());
+    assert_eq!(library.tag_aliases(child.id).expect("aliases").len(), 1);
+    assert!(library
+        .set_tag_on_assets(&[999], child.id, picker_store::TagState::Confirmed)
+        .is_err());
+}

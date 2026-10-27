@@ -38,6 +38,19 @@ pub fn run() {
             commands::index_status,
             commands::pause_index,
             commands::resume_index,
+            commands::tags_list,
+            commands::tag_create,
+            commands::tag_rename,
+            commands::tag_delete,
+            commands::tag_set_parent,
+            commands::tag_merge,
+            commands::tag_aliases,
+            commands::tag_add_alias,
+            commands::tag_remove_alias,
+            commands::tag_assign,
+            commands::tag_remove,
+            commands::asset_filter,
+            commands::duplicates_list,
         ])
         .register_uri_scheme_protocol("asset", |_context, request| {
             thumbnail_protocol::handle(request)

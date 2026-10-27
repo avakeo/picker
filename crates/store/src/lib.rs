@@ -6,6 +6,7 @@ mod error;
 mod migrations;
 mod models;
 mod repositories;
+mod tags;
 
 use std::{path::Path, time::Duration};
 
@@ -14,6 +15,7 @@ pub use migrations::{LATEST_SCHEMA_VERSION, MIGRATIONS};
 pub use models::*;
 pub use repositories::*;
 use rusqlite::{Connection, OpenFlags};
+pub use tags::*;
 
 /// An initialized Picker SQLite database.
 #[derive(Debug)]
@@ -82,6 +84,21 @@ impl Store {
         SettingRepository::new(&self.connection)
     }
 
+    #[must_use]
+    pub fn tags(&self) -> TagRepository<'_> {
+        TagRepository::new(&self.connection)
+    }
+
+    #[must_use]
+    pub fn tag_assignments(&self) -> TagAssignmentRepository<'_> {
+        TagAssignmentRepository::new(&self.connection)
+    }
+
+    #[must_use]
+    pub fn asset_filters(&self) -> AssetFilterRepository<'_> {
+        AssetFilterRepository::new(&self.connection)
+    }
+
     /// Provides transaction access for later use-case orchestration.
     #[must_use]
     pub fn connection(&self) -> &Connection {
@@ -105,5 +122,7 @@ fn configure(connection: &Connection, require_wal: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tag_tests;
 #[cfg(test)]
 mod tests;

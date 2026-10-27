@@ -58,6 +58,9 @@ fn empty_database_migrates_to_latest_schema_in_wal_mode() -> Result<()> {
         "schema_migrations".to_owned(),
         "settings".to_owned(),
         "stage_states".to_owned(),
+        "tag_aliases".to_owned(),
+        "tag_assignments".to_owned(),
+        "tags".to_owned(),
     ]);
     assert_eq!(tables, expected);
     Ok(())
