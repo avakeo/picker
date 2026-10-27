@@ -130,6 +130,9 @@ pub fn generated_typescript() -> String {
         TagAssignRequest::decl(&config),
         TagRemoveRequest::decl(&config),
         AssetFilterRequest::decl(&config),
+        ColorView::decl(&config),
+        ColorInput::decl(&config),
+        ColorSetRequest::decl(&config),
     ]
     .map(|declaration| {
         let declaration = declaration
@@ -171,6 +174,8 @@ pub fn generated_typescript() -> String {
            tagRemove: \"tag_remove\",
            assetFilter: \"asset_filter\",
            duplicatesList: \"duplicates_list\",
+           colorSet: \"color_set\",
+           colorReset: \"color_reset\",
          }} as const;\n\
          export const EVENTS = {{ indexProgressChanged: \"{}\" }} as const;\n",
         declarations.join("\n\n"),
@@ -292,6 +297,7 @@ pub struct AssetDetailView {
     pub locations: Vec<LocationView>,
     pub metadata: Option<AssetMetadataView>,
     pub tags: Vec<AssetTagView>,
+    pub colors: Vec<ColorView>,
 }
 
 /// Per-stage indexing progress.
@@ -494,4 +500,33 @@ pub struct AssetFilterRequest {
     pub min_height: Option<u32>,
     pub captured_from: Option<i64>,
     pub captured_to: Option<i64>,
+}
+
+/// An extracted or user-edited dominant color.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct ColorView {
+    pub rank: u8,
+    pub hex: String,
+    pub ratio: f64,
+    pub source: String,
+}
+
+/// One color supplied by the user.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct ColorInput {
+    pub hex: String,
+    pub ratio: f64,
+}
+
+/// Request for `color_set`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct ColorSetRequest {
+    pub asset_id: String,
+    pub colors: Vec<ColorInput>,
 }

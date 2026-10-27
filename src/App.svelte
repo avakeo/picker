@@ -22,6 +22,8 @@
     removeTag,
     removeTagAlias,
     renameTag,
+    resetColors,
+    setColors,
     rescanRoot,
     resumeIndex,
     revealAsset,
@@ -33,6 +35,7 @@
     type AssetDetailView,
     type AssetPageView,
     type AssetSummaryView,
+    type ColorView,
     type IndexStatusView,
     type RootView,
     type TagAliasView,
@@ -77,6 +80,8 @@
   let mergeTargets: Record<string, string> = {};
   let aliasesByTag: Record<string, TagAliasView[]> = {};
   let aliasDrafts: Record<string, string> = {};
+  let colorEditing = false;
+  let colorDrafts: string[] = [];
 
   async function guard(action: () => Promise<void>) {
     busy = true;
@@ -185,6 +190,34 @@
     }
     await guard(async () => {
       detail = await assetDetail(asset.id);
+      colorEditing = false;
+      colorDrafts = detail.colors.map((color) => color.hex);
+    });
+  }
+
+  function beginColorEdit() {
+    colorEditing = true;
+    colorDrafts = detail?.colors.map((color) => color.hex) ?? [];
+  }
+
+  async function saveColors() {
+    if (!detail) return;
+    const hexes = colorDrafts.map((hex) => hex.trim()).filter(Boolean);
+    const ratio = hexes.length > 0 ? 1 / hexes.length : 0;
+    await guard(async () => {
+      const colors = await setColors(detail!.summary.id, hexes.map((hex) => ({ hex, ratio })));
+      detail = { ...detail!, colors };
+      colorEditing = false;
+    });
+  }
+
+  async function resetColorsToAuto() {
+    if (!detail) return;
+    await guard(async () => {
+      const colors = await resetColors(detail!.summary.id);
+      detail = { ...detail!, colors };
+      colorEditing = false;
+      colorDrafts = colors.map((color) => color.hex);
     });
   }
 
@@ -597,6 +630,32 @@
             <button type="button" disabled={busy || !assignTagId} onclick={() => void handleAssignTag()}>付与</button>
           </div>
 
+          <h2>色</h2>
+          <div class="colors">
+            {#each detail.colors as color (color.rank)}
+              <span class="color">
+                <span class="swatch" style={`background:${color.hex}`}></span>
+                {color.hex} <em>{Math.round(color.ratio * 100)}% {color.source}</em>
+              </span>
+            {/each}
+            {#if detail.colors.length === 0}<span class="muted">色なし</span>{/if}
+          </div>
+          {#if colorEditing}
+            <div class="inline">
+              {#each colorDrafts as _hex, index (index)}
+                <input bind:value={colorDrafts[index]} placeholder="#RRGGBB" aria-label="色" />
+              {/each}
+              {#if colorDrafts.length < 3}
+                <button type="button" onclick={() => (colorDrafts = [...colorDrafts, ""])}>色を追加</button>
+              {/if}
+              <button type="button" disabled={busy} onclick={() => void saveColors()}>保存</button>
+              <button type="button" disabled={busy} onclick={() => void resetColorsToAuto()}>自動に戻す</button>
+              <button type="button" onclick={() => (colorEditing = false)}>取消</button>
+            </div>
+          {:else}
+            <button type="button" onclick={beginColorEdit}>色を修正</button>
+          {/if}
+
           <h2>保存場所</h2>
           <ul class="locations">
             {#each detail.locations as location (location.id)}
@@ -667,6 +726,9 @@
   .chip.suggested { border-color: #6a6040; background: #2f2a1d; }
   .chip em { color: #a3a3a3; font-size: 10px; }
   .chip button { padding: 0 4px; border: 0; background: none; }
+  .colors { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+  .color { display: inline-flex; align-items: center; gap: 4px; }
+  .color em { color: #999; }
   .locations { display: grid; gap: 6px; padding: 0; list-style: none; font-size: 12px; }
   .locations span { overflow-wrap: anywhere; }
   .missing { color: #e08a8a; }

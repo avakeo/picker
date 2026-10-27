@@ -476,3 +476,100 @@ fn perceptual_hash_matches_resized_and_recompressed_images() {
         hamming_distance(&baseline, &unrelated)
     );
 }
+
+fn solid(width: u32, height: u32, pixel: [u8; 4]) -> DecodedImage {
+    DecodedImage {
+        width,
+        height,
+        rgba: pixel.repeat((width * height) as usize),
+    }
+}
+
+fn rgb(hex: &str) -> [i32; 3] {
+    let value = u32::from_str_radix(&hex[1..], 16).expect("hex");
+    [
+        ((value >> 16) & 0xFF) as i32,
+        ((value >> 8) & 0xFF) as i32,
+        (value & 0xFF) as i32,
+    ]
+}
+
+fn close(actual: &str, expected: &str) -> bool {
+    let actual = rgb(actual);
+    let expected = rgb(expected);
+    (0..3).all(|channel| (actual[channel] - expected[channel]).abs() <= 6)
+}
+
+#[test]
+fn extracts_one_color_from_solid_images() {
+    let colors = extract_colors(&solid(64, 64, [220, 30, 40, 255]));
+    assert_eq!(colors.len(), 1);
+    assert!(close(&colors[0].hex, "#DC1E28"), "{:?}", colors);
+    assert!((colors[0].ratio - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn extracts_two_and_three_colors_in_area_order() {
+    let mut image = DecodedImage {
+        width: 60,
+        height: 40,
+        rgba: vec![0; 60 * 40 * 4],
+    };
+    for y in 0..40 {
+        for x in 0..60 {
+            let offset = ((y * 60 + x) * 4) as usize;
+            let color = if x < 30 {
+                [220, 30, 40, 255]
+            } else {
+                [30, 60, 220, 255]
+            };
+            image.rgba[offset..offset + 4].copy_from_slice(&color);
+        }
+    }
+    let colors = extract_colors(&image);
+    assert_eq!(colors.len(), 2);
+    assert!(
+        colors.iter().any(|color| close(&color.hex, "#DC1E28")),
+        "{colors:?}"
+    );
+    assert!(
+        colors.iter().any(|color| close(&color.hex, "#1E3CDC")),
+        "{colors:?}"
+    );
+    assert!((colors[0].ratio - 0.5).abs() < 0.05);
+
+    for y in 0..30 {
+        for x in 0..60 {
+            let offset = ((y * 60 + x) * 4) as usize;
+            let color = match x / 20 {
+                0 => [220, 30, 40, 255],
+                1 => [30, 200, 60, 255],
+                _ => [30, 60, 220, 255],
+            };
+            image.rgba[offset..offset + 4].copy_from_slice(&color);
+        }
+    }
+    let colors = extract_colors(&image);
+    assert_eq!(colors.len(), 3, "{colors:?}");
+}
+
+#[test]
+fn transparent_tiny_and_low_contrast_images_are_safe() {
+    assert!(extract_colors(&solid(8, 8, [255, 0, 0, 0])).is_empty());
+    assert!(extract_colors(&solid(1, 1, [0, 0, 0, 0])).is_empty());
+    let tiny = extract_colors(&solid(1, 1, [12, 200, 90, 255]));
+    assert_eq!(tiny.len(), 1);
+    assert!(close(&tiny[0].hex, "#0CC85A"), "{tiny:?}");
+
+    let mut image = DecodedImage {
+        width: 32,
+        height: 32,
+        rgba: Vec::new(),
+    };
+    for index in 0..32 * 32 {
+        let value = if index % 2 == 0 { 192 } else { 200 };
+        image.rgba.extend_from_slice(&[value, 10, 10, 255]);
+    }
+    let merged = extract_colors(&image);
+    assert!(!merged.is_empty() && merged.len() <= 2, "{merged:?}");
+}

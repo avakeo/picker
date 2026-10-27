@@ -10,9 +10,9 @@ use tauri::State;
 
 use crate::contract::{
     AssetDetailView, AssetFilterRequest, AssetMetadataView, AssetPageView, AssetSearchRequest,
-    AssetSummaryView, AssetTagView, EventContract, FinderRevealRequest, IdRequest,
-    IndexProgressChanged, IndexProgressChangedPayload, IndexStageProgress, IndexStatusView,
-    LocationView, RootAddRequest, RootEnabledRequest, RootView, StageProgressView,
+    AssetSummaryView, AssetTagView, ColorSetRequest, ColorView, EventContract, FinderRevealRequest,
+    IdRequest, IndexProgressChanged, IndexProgressChangedPayload, IndexStageProgress,
+    IndexStatusView, LocationView, RootAddRequest, RootEnabledRequest, RootView, StageProgressView,
     TagAliasDeleteRequest, TagAliasRequest, TagAliasView, TagAssignRequest, TagCreateRequest,
     TagMergeRequest, TagParentRequest, TagRemoveRequest, TagRenameRequest, TagView,
     ViewportRequest,
@@ -135,6 +135,16 @@ fn detail_view(detail: picker_core::AssetDetail) -> AssetDetailView {
                 state: assigned.assignment.state.as_str().to_owned(),
                 source: assigned.assignment.source.as_str().to_owned(),
                 confidence: assigned.assignment.confidence,
+            })
+            .collect(),
+        colors: detail
+            .colors
+            .into_iter()
+            .map(|color| ColorView {
+                rank: color.rank,
+                hex: color.hex,
+                ratio: color.ratio,
+                source: color.source.as_str().to_owned(),
             })
             .collect(),
     }
@@ -584,5 +594,56 @@ pub fn duplicates_list(state: State<'_, AppState>) -> CommandResult<Vec<AssetSum
         .library()
         .exact_duplicate_assets()
         .map(|assets| assets.into_iter().map(summary_view).collect())
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn color_set(
+    state: State<'_, AppState>,
+    request: ColorSetRequest,
+) -> CommandResult<Vec<ColorView>> {
+    let asset_id = parse_id(&request.asset_id)?;
+    let colors = request
+        .colors
+        .into_iter()
+        .map(|color| (color.hex, color.ratio))
+        .collect::<Vec<_>>();
+    state
+        .library()
+        .set_asset_colors(asset_id, &colors)
+        .map(|colors| {
+            colors
+                .into_iter()
+                .map(|color| ColorView {
+                    rank: color.rank,
+                    hex: color.hex,
+                    ratio: color.ratio,
+                    source: color.source.as_str().to_owned(),
+                })
+                .collect()
+        })
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn color_reset(
+    state: State<'_, AppState>,
+    request: IdRequest,
+) -> CommandResult<Vec<ColorView>> {
+    let asset_id = parse_id(&request.id)?;
+    state
+        .library()
+        .reset_asset_colors(asset_id)
+        .map(|colors| {
+            colors
+                .into_iter()
+                .map(|color| ColorView {
+                    rank: color.rank,
+                    hex: color.hex,
+                    ratio: color.ratio,
+                    source: color.source.as_str().to_owned(),
+                })
+                .collect()
+        })
         .map_err(error)
 }

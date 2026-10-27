@@ -65,7 +65,7 @@ export type LocationView = { id: string, rootId: string, relativePath: string, a
 
 export type AssetMetadataView = { cameraMake: string | null, cameraModel: string | null, lens: string | null, exposureTime: string | null, fNumber: number | null, iso: number | null, focalLengthMm: number | null, gpsLatitude: number | null, gpsLongitude: number | null, };
 
-export type AssetDetailView = { summary: AssetSummaryView, fileSize: bigint, locations: Array<LocationView>, metadata: AssetMetadataView | null, tags: Array<AssetTagView>, };
+export type AssetDetailView = { summary: AssetSummaryView, fileSize: bigint, locations: Array<LocationView>, metadata: AssetMetadataView | null, tags: Array<AssetTagView>, colors: Array<ColorView>, };
 
 export type StageProgressView = { stage: string, completed: number, pending: number, failed: number, };
 
@@ -107,6 +107,12 @@ export type TagRemoveRequest = { assetIds: Array<string>, tagId: string, };
 
 export type AssetFilterRequest = { cursor: string | null, pageSize: number, tagIds: Array<string>, tagMode: string, includeSuggested: boolean, formats: Array<string>, minWidth: number | null, minHeight: number | null, capturedFrom: bigint | null, capturedTo: bigint | null, };
 
+export type ColorView = { rank: number, hex: string, ratio: number, source: string, };
+
+export type ColorInput = { hex: string, ratio: number, };
+
+export type ColorSetRequest = { assetId: string, colors: Array<ColorInput>, };
+
 export const COMMANDS = {
            getAppInfo: "get_app_info",
            rootsList: "roots_list",
@@ -134,5 +140,7 @@ export const COMMANDS = {
            tagRemove: "tag_remove",
            assetFilter: "asset_filter",
            duplicatesList: "duplicates_list",
+           colorSet: "color_set",
+           colorReset: "color_reset",
          } as const;
 export const EVENTS = { indexProgressChanged: "index-progress-changed" } as const;
