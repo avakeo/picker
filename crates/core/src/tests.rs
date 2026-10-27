@@ -338,3 +338,28 @@ fn clip_model_indexes_and_searches_end_to_end() {
     let first = results[0].0;
     assert_eq!(library.similar_assets(first, 1).expect("similar").len(), 1);
 }
+
+#[test]
+fn tag_name_matches_outrank_semantic_results() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(42)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let items = library.asset_page(0, 10).expect("page").items;
+    let tagged = items.iter().max_by_key(|asset| asset.id).expect("asset").id;
+    let other = items.iter().min_by_key(|asset| asset.id).expect("asset").id;
+    let tag = library.create_tag("海辺", "海辺", None, None).expect("tag");
+    library
+        .set_tag_on_assets(&[tagged], tag.id, picker_store::TagState::Confirmed)
+        .expect("assign");
+    library
+        .set_embedder(Some(std::sync::Arc::new(MockEmbedder)))
+        .expect("embed");
+    library.index_embeddings(10).expect("index");
+    let results = library.search_text("海辺", 10).expect("search");
+    assert_eq!(results.first().expect("first").0, tagged);
+    assert_eq!(results[1].0, other);
+}

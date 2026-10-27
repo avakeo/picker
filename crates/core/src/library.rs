@@ -592,6 +592,39 @@ impl Library {
     }
 
     /// Embeds text and returns nearest assets with cosine scores.
+    /// Searches tag names first, then ranks the remaining assets semantically.
+    pub fn search_text(&self, query: &str, limit: u32) -> Result<Vec<(i64, f32)>> {
+        let limit = limit.clamp(1, 500) as usize;
+        if query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut results = Vec::with_capacity(limit);
+        let mut seen = std::collections::HashSet::new();
+        for asset_id in self
+            .store
+            .tags()
+            .asset_ids_matching(query)?
+            .into_iter()
+            .take(limit)
+        {
+            if seen.insert(asset_id) {
+                results.push((asset_id, 1.0));
+            }
+        }
+        if results.len() == limit {
+            return Ok(results);
+        }
+        for (asset_id, score) in self.semantic_search(query, limit as u32)? {
+            if results.len() == limit {
+                break;
+            }
+            if seen.insert(asset_id) {
+                results.push((asset_id, score));
+            }
+        }
+        Ok(results)
+    }
+
     pub fn semantic_search(&self, query: &str, limit: u32) -> Result<Vec<(i64, f32)>> {
         let embedder = self
             .embedder
