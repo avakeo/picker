@@ -189,12 +189,10 @@ fn root_registration_rejects_parent_child_overlap_and_toggles_enabled() -> Resul
             .register(&root("/library/photos/2026", "Nested")),
         Err(StoreError::RootOverlap { .. })
     ));
-    assert!(matches!(
-        store
-            .roots()
-            .register(&root("/library/photos-old", "Not nested")),
-        Ok(_)
-    ));
+    assert!(store
+        .roots()
+        .register(&root("/library/photos-old", "Not nested"))
+        .is_ok());
 
     let disabled = store.roots().set_enabled(first.id, false)?;
     assert!(!disabled.enabled);
