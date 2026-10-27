@@ -2,6 +2,17 @@
 
 //! Image decoding, metadata, thumbnails, and perceptual hashes for Picker.
 
-/// Placeholder for the decoder boundary evaluated in T0-4.
-#[derive(Debug, Default)]
-pub struct Imaging;
+mod decode;
+mod error;
+mod format;
+mod limits;
+mod thumbnail;
+
+#[cfg(test)]
+mod tests;
+
+pub use decode::{thumbnail_path, DecodedImage, Decoder, PlatformDecoder, RustFallbackDecoder};
+pub use error::{ImagingError, Result};
+pub use format::ImageFormat;
+pub use limits::DecodeLimits;
+pub use thumbnail::{ThumbnailCache, ThumbnailSize};
