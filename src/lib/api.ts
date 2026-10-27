@@ -13,7 +13,8 @@ import type {
   TagView,
   ViewportRequest,
   AssetSummaryView,
-  ColorView
+  ColorView,
+  AlbumView
 } from "./generated/ui-contract";
 
 export type { AssetDetailView, AssetPageView, AssetSummaryView, IndexStatusView, RootView } from "./generated/ui-contract";
@@ -81,7 +82,7 @@ export function thumbnailUrl(assetId: string, size: "grid" | "detail"): string {
   return `${origin}/thumbnail/${encodeURIComponent(assetId)}?size=${size}`;
 }
 
-export type { AssetTagView, ColorView, TagAliasView, TagView } from "./generated/ui-contract";
+export type { AlbumView, AssetTagView, ColorView, TagAliasView, TagView } from "./generated/ui-contract";
 
 export function listTags(): Promise<TagView[]> {
   return invoke("tags_list");
@@ -169,4 +170,36 @@ export function setColors(assetId: string, colors: { hex: string; ratio: number 
 
 export function resetColors(id: string): Promise<ColorView[]> {
   return invoke("color_reset", { request: { id } });
+}
+
+export function listAlbums(): Promise<AlbumView[]> {
+  return invoke("albums_list");
+}
+
+export function createAlbum(name: string): Promise<AlbumView> {
+  return invoke("album_create", { request: { name } });
+}
+
+export function renameAlbum(id: string, name: string): Promise<AlbumView> {
+  return invoke("album_rename", { request: { id, name } });
+}
+
+export function deleteAlbum(id: string): Promise<boolean> {
+  return invoke("album_delete", { request: { id } });
+}
+
+export function addAlbumAssets(albumId: string, assetIds: string[]): Promise<number> {
+  return invoke("album_add_assets", { request: { albumId, assetIds } });
+}
+
+export function removeAlbumAssets(albumId: string, assetIds: string[]): Promise<number> {
+  return invoke("album_remove_assets", { request: { albumId, assetIds } });
+}
+
+export function reorderAlbum(albumId: string, assetIds: string[]): Promise<void> {
+  return invoke("album_reorder", { request: { albumId, assetIds } });
+}
+
+export function listAlbumAssets(id: string): Promise<AssetSummaryView[]> {
+  return invoke("album_assets", { request: { id } });
 }

@@ -9,6 +9,7 @@ use picker_store::{AssetFilter, LocationStatus, RootStatus, TagFilter, TagMatchM
 use tauri::State;
 
 use crate::contract::{
+    AlbumAssetsRequest, AlbumCreateRequest, AlbumRenameRequest, AlbumReorderRequest, AlbumView,
     AssetDetailView, AssetFilterRequest, AssetMetadataView, AssetPageView, AssetSearchRequest,
     AssetSummaryView, AssetTagView, ColorSetRequest, ColorView, EventContract, FinderRevealRequest,
     IdRequest, IndexProgressChanged, IndexProgressChangedPayload, IndexStageProgress,
@@ -645,5 +646,120 @@ pub fn color_reset(
                 })
                 .collect()
         })
+        .map_err(error)
+}
+
+fn album_view(album: picker_store::AlbumWithCount) -> AlbumView {
+    AlbumView {
+        id: album.album.id.to_string(),
+        name: album.album.name,
+        kind: album.album.kind.as_str().to_owned(),
+        asset_count: album.asset_count,
+    }
+}
+
+#[tauri::command]
+pub fn albums_list(state: State<'_, AppState>) -> CommandResult<Vec<AlbumView>> {
+    state
+        .library()
+        .list_albums()
+        .map(|albums| albums.into_iter().map(album_view).collect())
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn album_create(
+    state: State<'_, AppState>,
+    request: AlbumCreateRequest,
+) -> CommandResult<AlbumView> {
+    let album = state.library().create_album(&request.name).map_err(error)?;
+    Ok(album_view(picker_store::AlbumWithCount {
+        album,
+        asset_count: 0,
+    }))
+}
+
+#[tauri::command]
+pub fn album_rename(
+    state: State<'_, AppState>,
+    request: AlbumRenameRequest,
+) -> CommandResult<AlbumView> {
+    let id = parse_id(&request.id)?;
+    let album = state
+        .library()
+        .rename_album(id, &request.name)
+        .map_err(error)?;
+    let count = state
+        .library()
+        .list_albums()
+        .map_err(error)?
+        .into_iter()
+        .find(|album| album.album.id == id)
+        .map_or(0, |album| album.asset_count);
+    Ok(album_view(picker_store::AlbumWithCount {
+        album,
+        asset_count: count,
+    }))
+}
+
+#[tauri::command]
+pub fn album_delete(state: State<'_, AppState>, request: IdRequest) -> CommandResult<bool> {
+    let id = parse_id(&request.id)?;
+    state.library().delete_album(id).map_err(error)
+}
+
+fn parse_asset_ids(ids: &[String]) -> CommandResult<Vec<i64>> {
+    ids.iter().map(|id| parse_id(id)).collect()
+}
+
+#[tauri::command]
+pub fn album_add_assets(
+    state: State<'_, AppState>,
+    request: AlbumAssetsRequest,
+) -> CommandResult<usize> {
+    let album_id = parse_id(&request.album_id)?;
+    let asset_ids = parse_asset_ids(&request.asset_ids)?;
+    state
+        .library()
+        .add_assets_to_album(album_id, &asset_ids)
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn album_remove_assets(
+    state: State<'_, AppState>,
+    request: AlbumAssetsRequest,
+) -> CommandResult<usize> {
+    let album_id = parse_id(&request.album_id)?;
+    let asset_ids = parse_asset_ids(&request.asset_ids)?;
+    state
+        .library()
+        .remove_assets_from_album(album_id, &asset_ids)
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn album_reorder(
+    state: State<'_, AppState>,
+    request: AlbumReorderRequest,
+) -> CommandResult<()> {
+    let album_id = parse_id(&request.album_id)?;
+    let asset_ids = parse_asset_ids(&request.asset_ids)?;
+    state
+        .library()
+        .reorder_album(album_id, &asset_ids)
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn album_assets(
+    state: State<'_, AppState>,
+    request: IdRequest,
+) -> CommandResult<Vec<AssetSummaryView>> {
+    let album_id = parse_id(&request.id)?;
+    state
+        .library()
+        .album_assets(album_id)
+        .map(|assets| assets.into_iter().map(summary_view).collect())
         .map_err(error)
 }

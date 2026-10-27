@@ -319,3 +319,30 @@ pub struct AssetColor {
     pub source: ColorSource,
     pub algorithm_version: String,
 }
+
+string_enum!(AlbumKind {
+    Manual => "manual",
+    Auto => "auto",
+});
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Album {
+    pub id: i64,
+    pub name: String,
+    pub kind: AlbumKind,
+    pub query: Option<String>,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlbumWithCount {
+    pub album: Album,
+    pub asset_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlbumItem {
+    pub album_id: i64,
+    pub asset_id: i64,
+    pub position: i64,
+}

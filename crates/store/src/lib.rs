@@ -2,6 +2,7 @@
 
 //! SQLite persistence boundary for Picker.
 
+mod albums;
 mod colors;
 mod error;
 mod migrations;
@@ -11,6 +12,7 @@ mod tags;
 
 use std::{path::Path, time::Duration};
 
+pub use albums::*;
 pub use colors::ColorRepository;
 pub use error::{Result, StoreError};
 pub use migrations::{LATEST_SCHEMA_VERSION, MIGRATIONS};
@@ -102,6 +104,11 @@ impl Store {
     }
 
     #[must_use]
+    pub fn albums(&self) -> AlbumRepository<'_> {
+        AlbumRepository::new(&self.connection)
+    }
+
+    #[must_use]
     pub fn colors(&self) -> ColorRepository<'_> {
         ColorRepository::new(&self.connection)
     }
@@ -129,6 +136,8 @@ fn configure(connection: &Connection, require_wal: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod album_tests;
 #[cfg(test)]
 mod color_tests;
 #[cfg(test)]

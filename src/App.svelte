@@ -4,24 +4,32 @@
   import { listen } from "@tauri-apps/api/event";
   import AssetGrid from "./lib/AssetGrid.svelte";
   import {
+    addAlbumAssets,
     addRoot,
     addTagAlias,
     assetDetail,
     assignTag,
+    createAlbum,
     createTag,
+    deleteAlbum,
     deleteTag,
     filterAssets,
     indexStatus,
+    listAlbumAssets,
+    listAlbums,
     listDuplicates,
     listRoots,
     listTagAliases,
     listTags,
     mergeTags,
     pauseIndex,
+    removeAlbumAssets,
     removeRoot,
     removeTag,
     removeTagAlias,
+    renameAlbum,
     renameTag,
+    reorderAlbum,
     resetColors,
     setColors,
     rescanRoot,
@@ -34,6 +42,7 @@
     updateViewport,
     type AssetDetailView,
     type AssetPageView,
+    type AlbumView,
     type AssetSummaryView,
     type ColorView,
     type IndexStatusView,
@@ -42,11 +51,17 @@
     type TagView
   } from "./lib/api";
 
-  type ViewMode = "all" | "filter" | "duplicates";
+  type ViewMode = "all" | "filter" | "duplicates" | "album";
   type TagMode = "all" | "any" | "none";
 
   let roots: RootView[] = [];
   let tags: TagView[] = [];
+  let albums: AlbumView[] = [];
+  let currentAlbumId = "";
+  let newAlbumName = "";
+  let editingAlbumId = "";
+  let editingAlbumName = "";
+  let armedAlbumDeleteId = "";
   let assets: AssetSummaryView[] = [];
   let nextCursor: string | null = null;
   let total = 0;
@@ -103,6 +118,10 @@
     tags = await listTags();
   }
 
+  async function refreshAlbums() {
+    albums = await listAlbums();
+  }
+
   function filterArgs() {
     return {
       tagIds: [...selectedTagIds],
@@ -117,6 +136,10 @@
   async function fetchPage(cursor: string | null): Promise<AssetPageView> {
     if (viewMode === "duplicates") {
       const items = await listDuplicates();
+      return { items, nextCursor: null, total: items.length, totalIsExact: true };
+    }
+    if (viewMode === "album") {
+      const items = await listAlbumAssets(currentAlbumId);
       return { items, nextCursor: null, total: items.length, totalIsExact: true };
     }
     if (viewMode === "filter") {
@@ -138,7 +161,13 @@
 
   async function refreshAll() {
     await guard(async () => {
-      await Promise.all([refreshRoots(), refreshTags(), refreshPage(true), refreshStatus()]);
+      await Promise.all([
+        refreshRoots(),
+        refreshTags(),
+        refreshAlbums(),
+        refreshPage(true),
+        refreshStatus()
+      ]);
     });
   }
 
@@ -257,6 +286,88 @@
     await guard(() => refreshPage(true));
   }
 
+  async function showAlbum(album: AlbumView) {
+    currentAlbumId = album.id;
+    viewMode = "album";
+    clearSelection();
+    await guard(() => refreshPage(true));
+  }
+
+  async function handleCreateAlbum() {
+    const name = newAlbumName.trim();
+    if (!name) return;
+    await guard(async () => {
+      await createAlbum(name);
+      newAlbumName = "";
+      await refreshAlbums();
+    });
+  }
+
+  async function saveAlbumRename(albumId: string) {
+    if (!editingAlbumName.trim()) return;
+    await guard(async () => {
+      await renameAlbum(albumId, editingAlbumName.trim());
+      editingAlbumId = "";
+      await refreshAlbums();
+    });
+  }
+
+  async function handleDeleteAlbum(albumId: string) {
+    if (armedAlbumDeleteId !== albumId) {
+      armedAlbumDeleteId = albumId;
+      return;
+    }
+    armedAlbumDeleteId = "";
+    await guard(async () => {
+      await deleteAlbum(albumId);
+      if (currentAlbumId === albumId) {
+        currentAlbumId = "";
+        viewMode = "all";
+      }
+      await Promise.all([refreshAlbums(), refreshPage(true)]);
+    });
+  }
+
+  async function addSelectionToAlbum(albumId: string) {
+    const ids = targetIds();
+    if (ids.length === 0) {
+      errorMessage = "画像を選択してください。";
+      return;
+    }
+    await guard(async () => {
+      await addAlbumAssets(albumId, ids);
+      await Promise.all([refreshAlbums(), refreshPage(true)]);
+    });
+  }
+
+  async function addSelectionToCurrentAlbum() {
+    if (currentAlbumId) await addSelectionToAlbum(currentAlbumId);
+  }
+
+  async function removeSelectionFromAlbum() {
+    if (!currentAlbumId) return;
+    const ids = targetIds();
+    if (ids.length === 0) return;
+    await guard(async () => {
+      await removeAlbumAssets(currentAlbumId, ids);
+      clearSelection();
+      await Promise.all([refreshAlbums(), refreshPage(true)]);
+    });
+  }
+
+  async function moveInAlbum(direction: -1 | 1) {
+    if (!currentAlbumId || !detail) return;
+    const ids = assets.map((asset) => asset.id);
+    const index = ids.indexOf(detail.summary.id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= ids.length) return;
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    await guard(async () => {
+      await reorderAlbum(currentAlbumId, ids);
+      await refreshPage(true);
+    });
+  }
+
   async function showDuplicates() {
     viewMode = "duplicates";
     clearSelection();
@@ -282,7 +393,7 @@
       if (detail && ids.includes(detail.summary.id)) {
         detail = await assetDetail(detail.summary.id);
       }
-      await Promise.all([refreshTags(), refreshPage(true)]);
+      await Promise.all([refreshTags(), refreshAlbums(), refreshPage(true)]);
     });
   }
 
@@ -435,6 +546,34 @@
       <button type="submit" disabled={busy}>追加</button>
     </form>
     {#if roots.length === 0}<p class="muted">フォルダが登録されていません。</p>{/if}
+
+    <section class="albums">
+      <h2>アルバム</h2>
+      <form class="inline" onsubmit={(event) => { event.preventDefault(); void handleCreateAlbum(); }}>
+        <input bind:value={newAlbumName} placeholder="新規アルバム" aria-label="新規アルバム" />
+        <button type="submit" disabled={busy}>作成</button>
+      </form>
+      <ul class="album-list">
+        {#each albums as album (album.id)}
+          <li class:current={album.id === currentAlbumId}>
+            {#if editingAlbumId === album.id}
+              <input bind:value={editingAlbumName} aria-label="アルバム名" />
+              <button type="button" disabled={busy} onclick={() => void saveAlbumRename(album.id)}>保存</button>
+              <button type="button" onclick={() => (editingAlbumId = "")}>取消</button>
+            {:else}
+              <button type="button" class="album-open" onclick={() => void showAlbum(album)}>
+                {album.name} ({album.assetCount})
+              </button>
+              <button type="button" title="選択中の画像を追加" disabled={busy} onclick={() => void addSelectionToAlbum(album.id)}>＋</button>
+              <button type="button" onclick={() => { editingAlbumId = album.id; editingAlbumName = album.name; }}>改名</button>
+              <button type="button" class:danger={armedAlbumDeleteId === album.id} disabled={busy} onclick={() => void handleDeleteAlbum(album.id)}>
+                {armedAlbumDeleteId === album.id ? "削除?" : "削除"}
+              </button>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </section>
     <ul class="roots">
       {#each roots as root (root.id)}
         <li class:disabled={!root.enabled}>
@@ -558,7 +697,12 @@
 
   <main>
     <div class="toolbar">
-      <div><strong>{total}</strong> 枚 {viewMode === "filter" ? "(絞り込み中)" : ""}{viewMode === "duplicates" ? "(重複)" : ""}</div>
+      <div>
+        <strong>{total}</strong> 枚
+        {viewMode === "filter" ? "(絞り込み中)" : ""}
+        {viewMode === "duplicates" ? "(重複)" : ""}
+        {viewMode === "album" ? `(アルバム: ${albums.find((album) => album.id === currentAlbumId)?.name ?? ""})` : ""}
+      </div>
       {#if status}
         <div class="stages">
           {#each status.stages.filter((stage) => stage.completed + stage.pending + stage.failed > 0) as stage (stage.stage)}
@@ -568,6 +712,10 @@
         <button type="button" disabled={busy} onclick={() => void togglePause()}>
           {status.paused ? "再開" : "一時停止"}
         </button>
+      {/if}
+      {#if viewMode === "album"}
+        <button type="button" disabled={busy} onclick={() => void addSelectionToCurrentAlbum()}>アルバムに追加</button>
+        <button type="button" disabled={busy} onclick={() => void removeSelectionFromAlbum()}>アルバムから外す</button>
       {/if}
       <button type="button" class:active={multiSelect} onclick={toggleMultiSelect}>
         複数選択 {multiSelect ? `(${selection.size})` : ""}
@@ -656,6 +804,15 @@
             <button type="button" onclick={beginColorEdit}>色を修正</button>
           {/if}
 
+          {#if viewMode === "album"}
+            <h2>アルバム内の位置</h2>
+            <div class="inline">
+              <button type="button" disabled={busy} onclick={() => void moveInAlbum(-1)}>↑ 前へ</button>
+              <button type="button" disabled={busy} onclick={() => void moveInAlbum(1)}>↓ 後ろへ</button>
+              <button type="button" disabled={busy} onclick={() => void removeSelectionFromAlbum()}>アルバムから外す</button>
+            </div>
+          {/if}
+
           <h2>保存場所</h2>
           <ul class="locations">
             {#each detail.locations as location (location.id)}
@@ -691,6 +848,11 @@
   button:disabled { cursor: not-allowed; opacity: 0.6; }
   button.active { border-color: #5b9dff; background: #24406b; }
   button.danger { border-color: #a33; background: #4a1d1d; }
+  .albums { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid #333; }
+  .album-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .album-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 3px; border: 1px solid transparent; border-radius: 5px; }
+  .album-list li.current { border-color: #5b9dff; background: #1d2a3d; }
+  .album-open { flex: 1; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
   .roots { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
   .roots li { display: grid; gap: 3px; padding: 8px; border: 1px solid #3a3a3a; border-radius: 6px; }
   .roots li.disabled { opacity: 0.55; }
