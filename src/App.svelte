@@ -11,6 +11,7 @@
     assetDetail,
     assignTag,
     createAlbum,
+    autoTag,
     createTag,
     deleteAlbum,
     embeddingStatus,
@@ -73,6 +74,7 @@
   let semanticQuery = "";
   let resultItems: AssetSummaryView[] = [];
   let resultLabel = "";
+  let autoTagResult = 0;
   let modelProgress: ModelProgressEvent | null = null;
   let installingModel = "";
   let currentAlbumId = "";
@@ -153,6 +155,14 @@
       await indexEmbeddings(100);
       await refreshEmbeddings();
       await refreshStatus();
+    });
+  }
+
+  async function runAutoTagBatch() {
+    await guard(async () => {
+      autoTagResult = await autoTag(100);
+      await refreshPage(true);
+      if (detail) detail = await assetDetail(detail.summary.id);
     });
   }
 
@@ -698,6 +708,10 @@
               埋め込みを100件処理
             </button>
           {/if}
+          <button type="button" disabled={busy} onclick={() => void runAutoTagBatch()}>
+            自動タグを100件処理
+          </button>
+          {#if autoTagResult > 0}<div class="muted">提案 {autoTagResult} 件</div>{/if}
         </div>
       {/if}
     </section>

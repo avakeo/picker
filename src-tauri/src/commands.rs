@@ -565,6 +565,31 @@ pub fn tag_assign(state: State<'_, AppState>, request: TagAssignRequest) -> Comm
 }
 
 #[tauri::command]
+pub fn tag_reject(state: State<'_, AppState>, request: TagAssignRequest) -> CommandResult<usize> {
+    let tag_id = parse_id(&request.tag_id)?;
+    let ids = request
+        .asset_ids
+        .iter()
+        .map(|id| parse_id(id))
+        .collect::<CommandResult<Vec<_>>>()?;
+    state
+        .library()
+        .set_tag_on_assets(&ids, tag_id, TagState::Rejected)
+        .map_err(error)
+}
+
+#[tauri::command]
+pub fn auto_tag(
+    state: State<'_, AppState>,
+    request: EmbeddingIndexRequest,
+) -> CommandResult<usize> {
+    state
+        .library()
+        .auto_tag(request.limit.clamp(1, 500))
+        .map_err(error)
+}
+
+#[tauri::command]
 pub fn tag_remove(state: State<'_, AppState>, request: TagRemoveRequest) -> CommandResult<usize> {
     let tag_id = parse_id(&request.tag_id)?;
     let ids = request
@@ -870,7 +895,7 @@ pub fn semantic_search(
 ) -> CommandResult<Vec<AssetSummaryView>> {
     let library = state.library();
     let results = library
-        .semantic_search(&request.query, request.limit)
+        .search_text(&request.query, request.limit)
         .map_err(error)?;
     let mut items = Vec::with_capacity(results.len());
     for (asset_id, _) in results {

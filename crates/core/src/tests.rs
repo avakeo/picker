@@ -363,3 +363,48 @@ fn tag_name_matches_outrank_semantic_results() {
     assert_eq!(results.first().expect("first").0, tagged);
     assert_eq!(results[1].0, other);
 }
+
+#[test]
+fn zero_shot_suggestions_never_replace_rejected_tags() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let asset_id = library.asset_page(0, 10).expect("page").items[0].id;
+    library
+        .set_embedder(Some(std::sync::Arc::new(MockEmbedder)))
+        .expect("embed");
+    library.index_embeddings(10).expect("index");
+    let suggested = library.auto_tag(10).expect("auto tag");
+    assert!(suggested > 0);
+    let tags = library.asset_detail(asset_id).expect("detail").tags;
+    let suggestion = tags
+        .iter()
+        .find(|tag| tag.assignment.source == picker_store::AssignmentSource::ZeroShot)
+        .expect("suggestion")
+        .tag
+        .id;
+    library
+        .set_tag_on_assets(&[asset_id], suggestion, picker_store::TagState::Rejected)
+        .expect("reject");
+    library
+        .store()
+        .stage_states()
+        .upsert(
+            picker_store::StageTarget::Asset(asset_id),
+            picker_store::Stage::AutoTag,
+            picker_store::StageStatus::Failed,
+            "zero-shot-v1",
+            Some("retry"),
+        )
+        .expect("reset stage");
+    library.auto_tag(10).expect("retry");
+    let state = library
+        .store()
+        .tag_assignments()
+        .get(asset_id, suggestion)
+        .expect("assignment");
+    assert_eq!(state.state, picker_store::TagState::Rejected);
+}

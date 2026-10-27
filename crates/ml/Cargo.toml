@@ -9,6 +9,8 @@ description = "Model boundaries and registry for Picker"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 picker-imaging = { path = "../imaging" }
 sentencepiece-rs = "0.2.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 sha2 = "0.10"
 ureq = { version = "2", features = ["tls"] }
 
