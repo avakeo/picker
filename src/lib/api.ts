@@ -14,7 +14,9 @@ import type {
   ViewportRequest,
   AssetSummaryView,
   ColorView,
-  AlbumView
+  AlbumView,
+  ModelProgressEvent,
+  ModelView
 } from "./generated/ui-contract";
 
 export type { AssetDetailView, AssetPageView, AssetSummaryView, IndexStatusView, RootView } from "./generated/ui-contract";
@@ -82,7 +84,15 @@ export function thumbnailUrl(assetId: string, size: "grid" | "detail"): string {
   return `${origin}/thumbnail/${encodeURIComponent(assetId)}?size=${size}`;
 }
 
-export type { AlbumView, AssetTagView, ColorView, TagAliasView, TagView } from "./generated/ui-contract";
+export type {
+  AlbumView,
+  AssetTagView,
+  ColorView,
+  ModelProgressEvent,
+  ModelView,
+  TagAliasView,
+  TagView
+} from "./generated/ui-contract";
 
 export function listTags(): Promise<TagView[]> {
   return invoke("tags_list");
@@ -202,4 +212,20 @@ export function reorderAlbum(albumId: string, assetIds: string[]): Promise<void>
 
 export function listAlbumAssets(id: string): Promise<AssetSummaryView[]> {
   return invoke("album_assets", { request: { id } });
+}
+
+export function listModels(): Promise<ModelView[]> {
+  return invoke("models_list");
+}
+
+export function installModel(id: string): Promise<void> {
+  return invoke("model_install", { request: { id } });
+}
+
+export function activateModel(id: string): Promise<void> {
+  return invoke("model_activate", { request: { id } });
+}
+
+export function removeModel(id: string, version: string): Promise<void> {
+  return invoke("model_remove", { request: { id: `${id}@${version}` } });
 }

@@ -138,6 +138,9 @@ pub fn generated_typescript() -> String {
         AlbumRenameRequest::decl(&config),
         AlbumAssetsRequest::decl(&config),
         AlbumReorderRequest::decl(&config),
+        ModelView::decl(&config),
+        ModelIdRequest::decl(&config),
+        ModelProgressEvent::decl(&config),
     ]
     .map(|declaration| {
         let declaration = declaration
@@ -189,11 +192,16 @@ pub fn generated_typescript() -> String {
            albumRemoveAssets: \"album_remove_assets\",
            albumReorder: \"album_reorder\",
            albumAssets: \"album_assets\",
+           modelsList: \"models_list\",
+           modelInstall: \"model_install\",
+           modelActivate: \"model_activate\",
+           modelRemove: \"model_remove\",
          }} as const;\n\
-         export const EVENTS = {{ indexProgressChanged: \"{}\" }} as const;\n",
+         export const EVENTS = {{ indexProgressChanged: \"{}\", modelProgressChanged: \"{}\" }} as const;\n",
         declarations.join("\n\n"),
         GetAppInfo::NAME,
         IndexProgressChanged::NAME,
+        ModelProgressChanged::NAME,
     )
 }
 
@@ -588,4 +596,50 @@ pub struct AlbumAssetsRequest {
 pub struct AlbumReorderRequest {
     pub album_id: String,
     pub asset_ids: Vec<String>,
+}
+
+/// An embedding model known to the registry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct ModelView {
+    pub id: String,
+    pub version: String,
+    pub license: String,
+    pub license_url: String,
+    pub size: u64,
+    pub state: String,
+    pub active: bool,
+}
+
+/// Request naming a model.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct ModelIdRequest {
+    pub id: String,
+}
+
+/// Contract marker for the model progress event.
+pub struct ModelProgressChanged;
+
+impl EventContract for ModelProgressChanged {
+    const NAME: &'static str = "model-progress";
+    type Payload = ModelProgressEvent;
+}
+
+/// Payload for the model download progress event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct ModelProgressEvent {
+    pub model_id: String,
+    pub version: String,
+    pub file: String,
+    pub file_index: u32,
+    pub file_count: u32,
+    pub file_downloaded: u64,
+    pub file_total: u64,
+    pub total_downloaded: u64,
+    pub total_size: u64,
 }

@@ -8,27 +8,32 @@ use picker_core::{Library, ThumbnailState};
 use picker_store::{AssetFilter, LocationStatus, RootStatus, TagFilter, TagMatchMode, TagState};
 use tauri::State;
 
+use picker_ml::ModelRegistry;
+use std::sync::Arc;
+
 use crate::contract::{
     AlbumAssetsRequest, AlbumCreateRequest, AlbumRenameRequest, AlbumReorderRequest, AlbumView,
     AssetDetailView, AssetFilterRequest, AssetMetadataView, AssetPageView, AssetSearchRequest,
     AssetSummaryView, AssetTagView, ColorSetRequest, ColorView, EventContract, FinderRevealRequest,
     IdRequest, IndexProgressChanged, IndexProgressChangedPayload, IndexStageProgress,
-    IndexStatusView, LocationView, RootAddRequest, RootEnabledRequest, RootView, StageProgressView,
-    TagAliasDeleteRequest, TagAliasRequest, TagAliasView, TagAssignRequest, TagCreateRequest,
-    TagMergeRequest, TagParentRequest, TagRemoveRequest, TagRenameRequest, TagView,
-    ViewportRequest,
+    IndexStatusView, LocationView, ModelIdRequest, ModelProgressEvent, ModelView, RootAddRequest,
+    RootEnabledRequest, RootView, StageProgressView, TagAliasDeleteRequest, TagAliasRequest,
+    TagAliasView, TagAssignRequest, TagCreateRequest, TagMergeRequest, TagParentRequest,
+    TagRemoveRequest, TagRenameRequest, TagView, ViewportRequest,
 };
 
 /// Shared application state managed by Tauri.
 pub struct AppState {
     library: Mutex<Library>,
+    models: Arc<ModelRegistry>,
 }
 
 impl AppState {
     #[must_use]
-    pub const fn new(library: Library) -> Self {
+    pub fn new(library: Library, models: ModelRegistry) -> Self {
         Self {
             library: Mutex::new(library),
+            models: Arc::new(models),
         }
     }
 
@@ -762,4 +767,69 @@ pub fn album_assets(
         .album_assets(album_id)
         .map(|assets| assets.into_iter().map(summary_view).collect())
         .map_err(error)
+}
+
+#[tauri::command]
+pub fn models_list(state: State<'_, AppState>) -> CommandResult<Vec<ModelView>> {
+    Ok(state
+        .models
+        .list()
+        .into_iter()
+        .map(|model| ModelView {
+            id: model.id,
+            version: model.version,
+            license: model.license,
+            license_url: model.license_url,
+            size: model.size,
+            state: model.state.as_str().to_owned(),
+            active: model.active,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn model_install(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    request: ModelIdRequest,
+) -> CommandResult<()> {
+    let registry = Arc::clone(&state.models);
+    tauri::async_runtime::spawn_blocking(move || {
+        registry
+            .install(&request.id, |progress| {
+                use tauri::Emitter;
+                let _ = app.emit(
+                    crate::contract::ModelProgressChanged::NAME,
+                    ModelProgressEvent {
+                        model_id: progress.model_id,
+                        version: progress.version,
+                        file: progress.file,
+                        file_index: u32::try_from(progress.file_index).unwrap_or(u32::MAX),
+                        file_count: u32::try_from(progress.file_count).unwrap_or(u32::MAX),
+                        file_downloaded: progress.file_downloaded,
+                        file_total: progress.file_total,
+                        total_downloaded: progress.total_downloaded,
+                        total_size: progress.total_size,
+                    },
+                );
+            })
+            .map(|_| ())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(error)
+}
+
+#[tauri::command]
+pub fn model_activate(state: State<'_, AppState>, request: ModelIdRequest) -> CommandResult<()> {
+    state.models.set_active(&request.id).map_err(error)
+}
+
+#[tauri::command]
+pub fn model_remove(state: State<'_, AppState>, request: ModelIdRequest) -> CommandResult<()> {
+    let (id, version) = request
+        .id
+        .split_once('@')
+        .ok_or_else(|| "モデル ID は id@version 形式で指定してください。".to_owned())?;
+    state.models.remove(id, version).map_err(error)
 }

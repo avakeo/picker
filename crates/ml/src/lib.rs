@@ -2,6 +2,9 @@
 
 //! Model boundaries and model registry for Picker.
 
-/// Placeholder for the Embedder, Tagger, and model registry boundaries.
-#[derive(Debug, Default)]
-pub struct MachineLearning;
+mod registry;
+
+pub use registry::{
+    catalog, HttpDownloader, ModelDownloader, ModelError, ModelFile, ModelInfo, ModelRegistry,
+    ModelState, ModelVersion, Progress,
+};

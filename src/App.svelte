@@ -5,6 +5,7 @@
   import AssetGrid from "./lib/AssetGrid.svelte";
   import {
     addAlbumAssets,
+    activateModel,
     addRoot,
     addTagAlias,
     assetDetail,
@@ -15,15 +16,18 @@
     deleteTag,
     filterAssets,
     indexStatus,
+    installModel,
     listAlbumAssets,
     listAlbums,
     listDuplicates,
+    listModels,
     listRoots,
     listTagAliases,
     listTags,
     mergeTags,
     pauseIndex,
     removeAlbumAssets,
+    removeModel,
     removeRoot,
     removeTag,
     removeTagAlias,
@@ -46,6 +50,8 @@
     type AssetSummaryView,
     type ColorView,
     type IndexStatusView,
+    type ModelProgressEvent,
+    type ModelView,
     type RootView,
     type TagAliasView,
     type TagView
@@ -57,6 +63,9 @@
   let roots: RootView[] = [];
   let tags: TagView[] = [];
   let albums: AlbumView[] = [];
+  let models: ModelView[] = [];
+  let modelProgress: ModelProgressEvent | null = null;
+  let installingModel = "";
   let currentAlbumId = "";
   let newAlbumName = "";
   let editingAlbumId = "";
@@ -122,6 +131,42 @@
     albums = await listAlbums();
   }
 
+  async function refreshModels() {
+    models = await listModels();
+  }
+
+  function modelPercent(progress: ModelProgressEvent) {
+    if (progress.totalSize === 0n) return 0;
+    return Math.min(
+      100,
+      Math.round((Number(progress.totalDownloaded) / Number(progress.totalSize)) * 100)
+    );
+  }
+
+  async function handleInstallModel(model: ModelView) {
+    installingModel = model.id;
+    modelProgress = null;
+    await guard(async () => {
+      await installModel(model.id);
+      await refreshModels();
+    });
+    installingModel = "";
+  }
+
+  async function handleActivateModel(model: ModelView) {
+    await guard(async () => {
+      await activateModel(model.id);
+      await refreshModels();
+    });
+  }
+
+  async function handleRemoveModel(model: ModelView) {
+    await guard(async () => {
+      await removeModel(model.id, model.version);
+      await refreshModels();
+    });
+  }
+
   function filterArgs() {
     return {
       tagIds: [...selectedTagIds],
@@ -165,6 +210,7 @@
         refreshRoots(),
         refreshTags(),
         refreshAlbums(),
+        refreshModels(),
         refreshPage(true),
         refreshStatus()
       ]);
@@ -526,9 +572,13 @@
     const unlisten = listen("index-progress-changed", () => {
       void refreshStatus();
     });
+    const unlistenModel = listen<ModelProgressEvent>("model-progress", (event) => {
+      modelProgress = event.payload;
+    });
     return () => {
       if (priorityTimer) clearTimeout(priorityTimer);
       void unlisten.then((stop) => stop());
+      void unlistenModel.then((stop) => stop());
     };
   });
 </script>
@@ -546,6 +596,39 @@
       <button type="submit" disabled={busy}>追加</button>
     </form>
     {#if roots.length === 0}<p class="muted">フォルダが登録されていません。</p>{/if}
+
+    <section class="models">
+      <h2>モデル</h2>
+      {#each models as model (model.id)}
+        <div class="model">
+          <div><strong>{model.id}</strong> {model.version}</div>
+          <div class="muted">
+            {model.state === "ready" ? "導入済み" : model.state === "partial" ? "未完了" : "未導入"}
+            ・{Math.round(Number(model.size) / 1_000_000)} MB ・{model.license}
+          </div>
+          <div class="inline">
+            {#if model.state !== "ready"}
+              <button type="button" disabled={busy || installingModel !== ""} onclick={() => void handleInstallModel(model)}>
+                {installingModel === model.id ? "取得中" : "ダウンロード"}
+              </button>
+            {:else}
+              <button type="button" disabled={busy || model.active} onclick={() => void handleActivateModel(model)}>
+                {model.active ? "使用中" : "使用する"}
+              </button>
+              <button type="button" disabled={busy} onclick={() => void handleRemoveModel(model)}>削除</button>
+            {/if}
+            <a href={model.licenseUrl} target="_blank" rel="noreferrer">ライセンス</a>
+          </div>
+          {#if installingModel === model.id && modelProgress}
+            <progress max="100" value={modelPercent(modelProgress)}></progress>
+            <div class="muted">
+              {modelPercent(modelProgress)}% ({Math.round(Number(modelProgress.totalDownloaded) / 1_000_000)} /
+              {Math.round(Number(modelProgress.totalSize) / 1_000_000)} MB)
+            </div>
+          {/if}
+        </div>
+      {/each}
+    </section>
 
     <section class="albums">
       <h2>アルバム</h2>
@@ -848,6 +931,9 @@
   button:disabled { cursor: not-allowed; opacity: 0.6; }
   button.active { border-color: #5b9dff; background: #24406b; }
   button.danger { border-color: #a33; background: #4a1d1d; }
+  .models { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid #333; }
+  .model { display: grid; gap: 3px; padding: 5px; border: 1px solid #333; border-radius: 5px; }
+  .model progress { width: 100%; }
   .albums { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid #333; }
   .album-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
   .album-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 3px; border: 1px solid transparent; border-radius: 5px; }
