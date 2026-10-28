@@ -59,7 +59,14 @@ def main() -> int:
     for row in eligible:
         failures = hard_failures(row, limits)
         total = 0.0
-        output = {"candidate_id": row["candidate_id"], "hard_fail": str(bool(failures)).lower()}
+        # One candidate has a row per provider and precision; keep both so
+        # each score can be traced to its run.
+        output = {
+            "candidate_id": row["candidate_id"],
+            "precision": row.get("precision", ""),
+            "provider": row.get("provider", ""),
+            "hard_fail": str(bool(failures)).lower(),
+        }
         if failures:
             output["hard_failures"] = ";".join(failures)
             output["total_score"] = "0.000000"

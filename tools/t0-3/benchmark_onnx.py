@@ -74,7 +74,20 @@ def worker(args: argparse.Namespace) -> int:
     return 0
 
 
+def model_files_or_error(paths: list[Path]) -> list[Path]:
+    """The shipped model files. Missing or unlisted files would under-report
+    the distribution size used for the 600 MB cutoff, so both are errors."""
+    if not paths:
+        raise SystemExit("--model-files is required: list every file the app ships")
+    missing = [str(path) for path in paths if not path.is_file()]
+    if missing:
+        raise SystemExit(f"model files not found: {', '.join(missing)}")
+    return paths
+
+
 def coordinator(args: argparse.Namespace) -> int:
+    # Checked before measuring, so no result is written for a wrong list.
+    model_files = model_files_or_error(args.model_files)
     runs = []
     for _ in range(args.load_repetitions):
         command = [
@@ -88,7 +101,6 @@ def coordinator(args: argparse.Namespace) -> int:
         completed = subprocess.run(command, check=True, capture_output=True, text=True, env=os.environ)
         runs.append(json.loads(completed.stdout.strip().splitlines()[-1]))
     inference = [value for run in runs for value in run["inference_ms"]]
-    model_files = [path for path in args.model_files if path.is_file()]
     result = {
         "candidate_id": args.candidate_id,
         "precision": args.precision,
