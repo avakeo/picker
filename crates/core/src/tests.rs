@@ -1720,3 +1720,166 @@ fn cache_targets_are_parsed_strictly() {
         assert!(CacheTarget::parse(invalid).is_err(), "{invalid}");
     }
 }
+
+fn confirmed_tag_names(library: &Library, asset_id: i64) -> Vec<String> {
+    library
+        .asset_detail(asset_id)
+        .expect("detail")
+        .tags
+        .into_iter()
+        .filter(|assigned| assigned.assignment.state == picker_store::TagState::Confirmed)
+        .map(|assigned| assigned.tag.canonical_name)
+        .collect()
+}
+
+fn present_paths(library: &Library, asset_id: i64) -> Vec<String> {
+    let mut paths: Vec<String> = library
+        .store()
+        .locations()
+        .list_for_asset(asset_id)
+        .expect("locations")
+        .into_iter()
+        .filter(|location| location.status == picker_store::LocationStatus::Present)
+        .map(|location| location.relative_path)
+        .collect();
+    paths.sort();
+    paths
+}
+
+/// T1-4: moving, renaming, copying, and deleting keep the asset and its tags.
+#[test]
+fn identity_scenarios_keep_tags_on_the_same_content() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("photo.png"), png_bytes(70)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let asset = library.asset_page(0, 10).expect("page").items[0].id;
+    let tag = library.create_tag("sea", "海", None, None).expect("tag");
+    library
+        .set_tag_on_assets(&[asset], tag.id, picker_store::TagState::Confirmed)
+        .expect("tag");
+
+    // Move into a subfolder.
+    fs::create_dir_all(media.path().join("2026")).expect("dir");
+    fs::rename(
+        media.path().join("photo.png"),
+        media.path().join("2026/photo.png"),
+    )
+    .expect("move");
+    library.scan_root(root.id).expect("scan after move");
+    assert_eq!(present_paths(&library, asset), vec!["2026/photo.png"]);
+    assert_eq!(confirmed_tag_names(&library, asset), vec!["sea"]);
+
+    // Rename.
+    fs::rename(
+        media.path().join("2026/photo.png"),
+        media.path().join("2026/beach.png"),
+    )
+    .expect("rename");
+    library.scan_root(root.id).expect("scan after rename");
+    assert_eq!(present_paths(&library, asset), vec!["2026/beach.png"]);
+    assert_eq!(confirmed_tag_names(&library, asset), vec!["sea"]);
+
+    // Copy: both files belong to the same asset and share its tags.
+    fs::copy(
+        media.path().join("2026/beach.png"),
+        media.path().join("copy.png"),
+    )
+    .expect("copy");
+    library.scan_root(root.id).expect("scan after copy");
+    assert_eq!(
+        present_paths(&library, asset),
+        vec!["2026/beach.png", "copy.png"]
+    );
+    assert_eq!(library.store().assets().count().expect("count"), 1);
+
+    // Delete every copy: the files are missing, the asset and tags stay so a
+    // returning file finds them again.
+    fs::remove_file(media.path().join("2026/beach.png")).expect("delete");
+    fs::remove_file(media.path().join("copy.png")).expect("delete");
+    library.scan_root(root.id).expect("scan after delete");
+    assert!(present_paths(&library, asset).is_empty());
+    assert_eq!(confirmed_tag_names(&library, asset), vec!["sea"]);
+    fs::write(media.path().join("back.png"), png_bytes(70)).expect("restore");
+    library.scan_root(root.id).expect("scan after restore");
+    assert_eq!(present_paths(&library, asset), vec!["back.png"]);
+    assert_eq!(confirmed_tag_names(&library, asset), vec!["sea"]);
+}
+
+/// T1-4: changing the content of a file makes it a different asset. Whether
+/// the tags should follow the path is undecided (ADR-008 proposal); this test
+/// pins the current behavior so a change is deliberate.
+#[test]
+fn changing_file_content_creates_a_new_asset_and_keeps_the_old_tags_on_the_old_one() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("photo.png"), png_bytes(80)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let original = library.asset_page(0, 10).expect("page").items[0].id;
+    let tag = library
+        .create_tag("draft", "下書き", None, None)
+        .expect("tag");
+    library
+        .set_tag_on_assets(&[original], tag.id, picker_store::TagState::Confirmed)
+        .expect("tag");
+
+    // Same path and a different size, so the change is detected.
+    let mut edited = png_bytes(81);
+    edited.extend_from_slice(&[0; 16]);
+    fs::write(media.path().join("photo.png"), edited).expect("edit");
+    library.scan_root(root.id).expect("scan after edit");
+
+    let ids: Vec<i64> = library
+        .asset_page(0, 10)
+        .expect("page")
+        .items
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    let edited_asset = *ids.iter().find(|id| **id != original).expect("new asset");
+    assert_eq!(present_paths(&library, edited_asset), vec!["photo.png"]);
+    assert!(present_paths(&library, original).is_empty());
+    assert_eq!(confirmed_tag_names(&library, original), vec!["draft"]);
+    assert!(confirmed_tag_names(&library, edited_asset).is_empty());
+}
+
+/// T1-2: removing a root deletes its locations, but an asset with a file in
+/// another root keeps its confirmed tags.
+#[test]
+fn removing_a_root_keeps_tags_of_assets_found_elsewhere() {
+    let first = tempfile::tempdir().expect("first");
+    let second = tempfile::tempdir().expect("second");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(first.path().join("shared.png"), png_bytes(90)).expect("write");
+    fs::write(second.path().join("shared copy.png"), png_bytes(90)).expect("write");
+    fs::write(first.path().join("only.png"), png_bytes(91)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let removed = library.add_root(first.path(), "first").expect("root");
+    let kept = library.add_root(second.path(), "second").expect("root");
+    library.scan_root(removed.id).expect("scan");
+    library.scan_root(kept.id).expect("scan");
+    let shared = library
+        .store()
+        .locations()
+        .list_for_root(kept.id)
+        .expect("locations")[0]
+        .asset_id;
+    let tag = library.create_tag("keep", "残す", None, None).expect("tag");
+    library
+        .set_tag_on_assets(&[shared], tag.id, picker_store::TagState::Confirmed)
+        .expect("tag");
+
+    assert!(library.remove_root(removed.id).expect("remove"));
+    assert!(library
+        .store()
+        .locations()
+        .list_for_root(removed.id)
+        .expect("locations")
+        .is_empty());
+    assert_eq!(present_paths(&library, shared), vec!["shared copy.png"]);
+    assert_eq!(confirmed_tag_names(&library, shared), vec!["keep"]);
+}
