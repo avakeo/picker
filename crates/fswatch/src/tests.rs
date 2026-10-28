@@ -118,3 +118,71 @@ fn rejects_a_root_that_is_not_a_directory() {
     fs::write(&file, b"x").expect("write file");
     assert!(RootWatcher::new(&file).is_err());
 }
+
+#[test]
+fn debouncer_waits_for_quiet_or_the_maximum_delay() {
+    let start = std::time::Instant::now();
+    let quiet = Duration::from_secs(2);
+    let mut debouncer = Debouncer::new(quiet, Duration::from_secs(10));
+    debouncer.record("a", start);
+    debouncer.record("b", start);
+    // Changes keep arriving for "a".
+    for second in 1..=9 {
+        debouncer.record("a", start + Duration::from_secs(second));
+    }
+    assert!(debouncer
+        .take_due(start + Duration::from_secs(1))
+        .is_empty());
+    assert_eq!(
+        debouncer.take_due(start + Duration::from_secs(2)),
+        vec!["b"]
+    );
+    assert!(debouncer
+        .take_due(start + Duration::from_secs(9))
+        .is_empty());
+    // "a" never went quiet, so the maximum delay releases it.
+    assert_eq!(
+        debouncer.take_due(start + Duration::from_secs(10)),
+        vec!["a"]
+    );
+    assert!(debouncer.is_empty());
+}
+
+#[test]
+fn notifier_reports_changes_below_a_watched_root() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    // Resolve /var -> /private/var on macOS so reported paths match.
+    let root = fs::canonicalize(temporary.path()).expect("canonical root");
+    let mut notifier = ChangeNotifier::new().expect("notifier");
+    notifier.watch(&root).expect("watch");
+    notifier.watch(&root).expect("watching twice is fine");
+    assert!(notifier.is_watching(&root));
+    sleep(Duration::from_millis(300));
+
+    write(&root, "nested/new.jpg", b"new");
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut seen = Vec::new();
+    while std::time::Instant::now() < deadline
+        && !seen.iter().any(|path: &PathBuf| path.starts_with(&root))
+    {
+        seen.extend(notifier.wait(Duration::from_millis(200)));
+    }
+    assert!(
+        seen.iter().any(|path| path.starts_with(&root)),
+        "no notification below {root:?}: {seen:?}"
+    );
+
+    notifier.unwatch(&root);
+    notifier.unwatch(&root);
+    assert!(!notifier.is_watching(&root));
+}
+
+#[test]
+fn watching_a_missing_root_is_an_error() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    let mut notifier = ChangeNotifier::new().expect("notifier");
+    assert!(matches!(
+        notifier.watch(&temporary.path().join("missing")),
+        Err(WatchError::Notify(_))
+    ));
+}

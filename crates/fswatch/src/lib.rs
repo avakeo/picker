@@ -2,10 +2,14 @@
 
 //! Filesystem watching boundary for Picker.
 //!
-//! The MVP scanner polls a root and computes a content-free snapshot diff. The
-//! caller polls at the debounce interval, so a burst of writes is coalesced into
-//! one diff. The same boundary can be driven by FSEvents on macOS without
-//! changing the event model.
+//! [`ChangeNotifier`] receives OS change notifications (FSEvents on macOS) for
+//! registered roots, and [`Debouncer`] groups a burst of them into one rescan
+//! per root. [`RootWatcher`] polls a root and computes a content-free snapshot
+//! diff, for volumes where notifications cannot be registered.
+
+mod notifier;
+
+pub use notifier::{ChangeNotifier, Debouncer};
 
 use std::{
     collections::BTreeMap,
@@ -17,12 +21,14 @@ use std::{
 #[derive(Debug)]
 pub enum WatchError {
     Io(std::io::Error),
+    Notify(String),
 }
 
 impl std::fmt::Display for WatchError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(error) => write!(formatter, "I/O error: {error}"),
+            Self::Notify(error) => write!(formatter, "change notification error: {error}"),
         }
     }
 }
