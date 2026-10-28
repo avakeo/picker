@@ -172,14 +172,18 @@ fn nearest(lab: [f64; 3], centers: &[[f64; 3]]) -> usize {
     best
 }
 
-fn delta_e(left: [f64; 3], right: [f64; 3]) -> f64 {
+/// CIE76 color difference between two CIELAB colors.
+#[must_use]
+pub fn delta_e(left: [f64; 3], right: [f64; 3]) -> f64 {
     let dl = left[0] - right[0];
     let da = left[1] - right[1];
     let db = left[2] - right[2];
     (dl * dl + da * da + db * db).sqrt()
 }
 
-fn rgb_to_lab(rgb: [u8; 3]) -> [f64; 3] {
+/// Converts an sRGB color to CIELAB (D65).
+#[must_use]
+pub fn rgb_to_lab(rgb: [u8; 3]) -> [f64; 3] {
     let linear = |value: u8| {
         let value = f64::from(value) / 255.0;
         if value <= 0.040_45 {

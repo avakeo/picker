@@ -14,7 +14,7 @@ mod thumbnail;
 #[cfg(test)]
 mod tests;
 
-pub use color::{extract_colors, ExtractedColor};
+pub use color::{delta_e, extract_colors, rgb_to_lab, ExtractedColor};
 pub use decode::{thumbnail_path, DecodedImage, Decoder, PlatformDecoder, RustFallbackDecoder};
 pub use error::{ImagingError, Result};
 pub use format::ImageFormat;

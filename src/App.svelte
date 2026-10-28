@@ -34,6 +34,7 @@
     listRoots,
     listTagAliases,
     listTags,
+    listPalette,
     mergeTags,
     pauseIndex,
     removeAlbumAssets,
@@ -70,6 +71,7 @@
     type IndexStatusView,
     type ModelProgressEvent,
     type ModelView,
+    type PaletteColorView,
     type RootView,
     type TagAliasView,
     type TagView
@@ -119,6 +121,9 @@
   // Per-tag condition in the filter: all / any / none, or unset.
   let tagModes: Record<string, TagMode> = {};
   let includeSuggested = false;
+  let palette: PaletteColorView[] = [];
+  let selectedColors: string[] = [];
+  let colorScope: "main" | "any" = "main";
   let formatFilter = "";
   let minWidth = "";
   let minHeight = "";
@@ -152,6 +157,16 @@
 
   async function refreshRoots() {
     roots = await listRoots();
+  }
+
+  async function refreshPalette() {
+    palette = await listPalette();
+  }
+
+  function toggleColor(colorId: string) {
+    selectedColors = selectedColors.includes(colorId)
+      ? selectedColors.filter((id) => id !== colorId)
+      : [...selectedColors, colorId];
   }
 
   async function refreshTags() {
@@ -283,6 +298,8 @@
       tagsAny: tagsWithMode("any"),
       tagsNone: tagsWithMode("none"),
       includeSuggested,
+      colors: selectedColors,
+      colorScope,
       formats: formatFilter ? [formatFilter] : [],
       minWidth: minWidth ? Number(minWidth) : null,
       minHeight: minHeight ? Number(minHeight) : null
@@ -328,6 +345,7 @@
       await Promise.all([
         refreshRoots(),
         refreshTags(),
+        refreshPalette(),
         refreshAlbums(),
         refreshModels(),
         refreshEmbeddings(),
@@ -443,6 +461,8 @@
 
   async function clearFilter() {
     tagModes = {};
+    selectedColors = [];
+    colorScope = "main";
     includeSuggested = false;
     formatFilter = "";
     minWidth = "";
@@ -964,6 +984,25 @@
         <input class="num" type="number" min="0" bind:value={minHeight} placeholder="最小高" aria-label="最小高" />
       </div>
 
+      <div class="filter-row palette" role="group" aria-label="色">
+        {#each palette as color (color.id)}
+          <button
+            type="button"
+            class="swatch"
+            class:selected={selectedColors.includes(color.id)}
+            style={`background: ${color.hex}`}
+            title={color.nameJa}
+            aria-label={color.nameJa}
+            aria-pressed={selectedColors.includes(color.id)}
+            onclick={() => toggleColor(color.id)}
+          ></button>
+        {/each}
+        <select bind:value={colorScope} aria-label="色の対象">
+          <option value="main">メインカラーのみ</option>
+          <option value="any">最大3色のいずれか</option>
+        </select>
+      </div>
+
       <div class="filter-list">
         {#each tags as tag (tag.id)}
           <label class="tag-filter">
@@ -1312,6 +1351,9 @@
   .filter-list { display: grid; max-height: 150px; overflow: auto; gap: 2px; padding: 4px; border: 1px solid #333; border-radius: 5px; }
   .check { display: flex; align-items: center; gap: 5px; font-size: 12px; }
   .num { width: 72px; }
+  .palette { flex-wrap: wrap; gap: 4px; }
+  .swatch { width: 20px; height: 20px; padding: 0; border: 1px solid #666; border-radius: 4px; }
+  .swatch.selected { outline: 2px solid #4fa3ff; outline-offset: 1px; }
   .tags { display: grid; gap: 7px; padding-top: 8px; border-top: 1px solid #333; }
   .tag-manager { border-top: 1px solid #333; padding-top: 8px; }
   .tag-manager summary { cursor: pointer; font-weight: 600; }

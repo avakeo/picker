@@ -1119,6 +1119,238 @@ fn snapshots_are_written_when_due_and_rotated() {
     );
 }
 
+/// A PNG whose left `main_percent` columns are `main` and the rest `other`.
+fn two_color_png(main: [u8; 3], other: [u8; 3], main_percent: u32) -> Vec<u8> {
+    let mut image = RgbaImage::new(100, 40);
+    for (x, _, pixel) in image.enumerate_pixels_mut() {
+        let [r, g, b] = if x < main_percent { main } else { other };
+        *pixel = Rgba([r, g, b, 255]);
+    }
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    DynamicImage::ImageRgba8(image)
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .expect("encode png");
+    bytes.into_inner()
+}
+
+fn color_ids(library: &Library, palette_ids: &[&str], scope: crate::ColorScope) -> Vec<i64> {
+    let mut filter = picker_store::AssetFilter::default();
+    library
+        .restrict_to_colors(
+            &mut filter,
+            &crate::ColorCondition {
+                palette_ids: palette_ids.iter().map(|id| (*id).to_owned()).collect(),
+                scope,
+            },
+        )
+        .expect("colors");
+    let mut ids: Vec<i64> = library
+        .filter_page(&filter, 0, 100)
+        .expect("filter")
+        .items
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+#[test]
+fn color_search_returns_only_images_near_the_selected_color() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    let red = [220, 30, 30];
+    let blue = [30, 90, 220];
+    let green = [40, 160, 60];
+    fs::write(media.path().join("red.png"), two_color_png(red, red, 100)).expect("write");
+    fs::write(
+        media.path().join("blue.png"),
+        two_color_png(blue, blue, 100),
+    )
+    .expect("write");
+    // Mostly blue with a red part: red is not the main color.
+    fs::write(media.path().join("mixed.png"), two_color_png(blue, red, 70)).expect("write");
+    fs::write(
+        media.path().join("green.png"),
+        two_color_png(green, green, 100),
+    )
+    .expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let id = |name| asset_id_named(&library, name);
+    let mut red_any = vec![id("red.png"), id("mixed.png")];
+    red_any.sort_unstable();
+
+    assert_eq!(
+        color_ids(&library, &["red"], crate::ColorScope::Main),
+        vec![id("red.png")]
+    );
+    assert_eq!(
+        color_ids(&library, &["red"], crate::ColorScope::AnyOfThree),
+        red_any
+    );
+    let mut blue_main = vec![id("blue.png"), id("mixed.png")];
+    blue_main.sort_unstable();
+    assert_eq!(
+        color_ids(&library, &["blue"], crate::ColorScope::Main),
+        blue_main
+    );
+    // Several palette colors match any of them.
+    let mut red_or_green = vec![id("red.png"), id("green.png")];
+    red_or_green.sort_unstable();
+    assert_eq!(
+        color_ids(&library, &["red", "green"], crate::ColorScope::Main),
+        red_or_green
+    );
+    assert!(color_ids(&library, &["yellow"], crate::ColorScope::AnyOfThree).is_empty());
+
+    // The color condition combines with other conditions by AND.
+    let tag = library.create_tag("sky", "空", None, None).expect("tag");
+    library
+        .set_tag_on_assets(
+            &[id("mixed.png")],
+            tag.id,
+            picker_store::TagState::Confirmed,
+        )
+        .expect("tag");
+    let mut filter = picker_store::AssetFilter {
+        tags: picker_store::TagFilter {
+            all: vec![tag.id],
+            ..picker_store::TagFilter::default()
+        },
+        ..picker_store::AssetFilter::default()
+    };
+    library
+        .restrict_to_colors(
+            &mut filter,
+            &crate::ColorCondition {
+                palette_ids: vec!["red".to_owned()],
+                scope: crate::ColorScope::AnyOfThree,
+            },
+        )
+        .expect("colors");
+    let items = library.filter_page(&filter, 0, 10).expect("filter").items;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, id("mixed.png"));
+}
+
+#[test]
+fn color_search_rejects_unknown_palette_colors() {
+    let cache = tempfile::tempdir().expect("cache");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let mut filter = picker_store::AssetFilter::default();
+    let result = library.restrict_to_colors(
+        &mut filter,
+        &crate::ColorCondition {
+            palette_ids: vec!["gray".to_owned()],
+            scope: crate::ColorScope::Main,
+        },
+    );
+    assert!(result.is_err());
+    assert_eq!(filter.asset_ids, None);
+}
+
+#[test]
+fn bundled_palette_has_twelve_colors_and_sorts_gray_by_distance() {
+    let palette = crate::Palette::bundled().expect("palette");
+    assert_eq!(palette.colors().len(), 12);
+    for color in palette.colors() {
+        assert_eq!(palette.classify(&color.hex), Some(color.id.as_str()));
+    }
+    assert_eq!(palette.classify("#F2F2F2"), Some("white"));
+    assert_eq!(palette.classify("#202020"), Some("black"));
+    assert!(matches!(
+        palette.classify("#808080"),
+        Some("white" | "black")
+    ));
+    assert_eq!(palette.classify("not a color"), None);
+    assert_eq!(palette.classify("#12345"), None);
+}
+
+#[test]
+fn palette_files_with_bad_values_are_rejected() {
+    let file = |threshold: &str, colors: &str| {
+        format!(
+            r#"{{"status":"x","note":"x","threshold":{threshold},
+                "achromatic":{{"maxChroma":12,"lightId":"red","darkId":"red"}},
+                "colors":[{colors}]}}"#
+        )
+    };
+    let red = r##"{"id":"red","nameJa":"赤","hex":"#FF0000"}"##;
+    assert!(crate::Palette::from_json(&file("10", red)).is_ok());
+    assert!(crate::Palette::from_json(&file("0", red)).is_err());
+    assert!(crate::Palette::from_json(&file("10", "")).is_err());
+    assert!(crate::Palette::from_json(&file("10", &format!("{red},{red}"))).is_err());
+    assert!(crate::Palette::from_json(&file(
+        "10",
+        r##"{"id":"red","nameJa":"赤","hex":"#GG0000"}"##
+    ))
+    .is_err());
+    let unknown_white = r##"{"status":"x","note":"x","threshold":10,
+        "achromatic":{"maxChroma":12,"lightId":"white","darkId":"red"},
+        "colors":[{"id":"red","nameJa":"赤","hex":"#FF0000"}]}"##;
+    assert!(crate::Palette::from_json(unknown_white).is_err());
+    assert!(crate::Palette::from_json("{}").is_err());
+    assert!(crate::Palette::from_json("").is_err());
+}
+
+/// Design chapter 13: a search over 50,000 images answers within 200 ms.
+/// Run with `cargo test -p picker-core --release -- --ignored color_search_meets`.
+#[test]
+#[ignore = "slow: seeds 50,000 assets"]
+fn color_search_meets_the_response_target_for_50k_images() {
+    let cache = tempfile::tempdir().expect("cache");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let palette = crate::Palette::bundled().expect("palette");
+    let hexes: Vec<String> = palette
+        .colors()
+        .iter()
+        .map(|color| color.hex.clone())
+        .collect();
+    for index in 0_u32..50_000 {
+        let mut hash = [0_u8; 32];
+        hash[..4].copy_from_slice(&index.to_le_bytes());
+        let asset = library
+            .store()
+            .assets()
+            .insert(&picker_store::NewAsset {
+                blake3_hash: &hash,
+                file_size: 1,
+                width: Some(10),
+                height: Some(10),
+                format: Some("png"),
+                captured_at: None,
+                perceptual_hash: None,
+            })
+            .expect("asset");
+        let colors: Vec<(String, f64)> = (0..3)
+            .map(|offset| (hexes[(index as usize + offset) % hexes.len()].clone(), 0.3))
+            .collect();
+        library
+            .store()
+            .colors()
+            .set_auto(asset.id, &colors, "test")
+            .expect("colors");
+    }
+    let started = std::time::Instant::now();
+    let mut filter = picker_store::AssetFilter::default();
+    library
+        .restrict_to_colors(
+            &mut filter,
+            &crate::ColorCondition {
+                palette_ids: vec!["red".to_owned()],
+                scope: crate::ColorScope::AnyOfThree,
+            },
+        )
+        .expect("colors");
+    let page = library.filter_page(&filter, 0, 100).expect("filter");
+    let elapsed = started.elapsed();
+    eprintln!("color search over 50,000 images: {elapsed:?}");
+    assert_eq!(page.items.len(), 100);
+    assert!(elapsed.as_millis() < 200, "color search took {elapsed:?}");
+}
+
 #[test]
 fn xmp_export_writes_only_when_enabled_and_preserves_existing_fields() {
     let media = tempfile::tempdir().expect("media");

@@ -135,9 +135,20 @@ tagsAny: Array<string>,
 /**
  * Tags that must not be present.
  */
-tagsNone: Array<string>, includeSuggested: boolean, formats: Array<string>, minWidth: number | null, minHeight: number | null, capturedFrom: bigint | null, capturedTo: bigint | null, };
+tagsNone: Array<string>, includeSuggested: boolean, formats: Array<string>, minWidth: number | null, minHeight: number | null, capturedFrom: bigint | null, capturedTo: bigint | null,
+/**
+ * Palette color ids from `palette_list`. An image matches if it has any
+ * of them. Empty means no color condition.
+ */
+colors: Array<string>,
+/**
+ * `main` looks at the main color only, `any` at up to three colors.
+ */
+colorScope: string, };
 
 export type ColorView = { rank: number, hex: string, ratio: number, source: string, };
+
+export type PaletteColorView = { id: string, nameJa: string, hex: string, };
 
 export type ColorInput = { hex: string, ratio: number, };
 
@@ -205,6 +216,7 @@ export const COMMANDS = {
            tagRemove: "tag_remove",
            assetFilter: "asset_filter",
            duplicatesList: "duplicates_list",
+           paletteList: "palette_list",
            colorSet: "color_set",
            colorReset: "color_reset",
            albumsList: "albums_list",

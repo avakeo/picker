@@ -62,6 +62,17 @@ impl<'connection> ColorRepository<'connection> {
             .map_err(StoreError::from)
     }
 
+    /// Returns `(asset_id, hex)` for every color ranked `max_rank` or better,
+    /// for color search. Rank 1 is the main color.
+    pub fn colors_up_to_rank(&self, max_rank: u8) -> Result<Vec<(i64, String)>> {
+        let mut statement = self.connection.prepare(
+            "SELECT asset_id, hex FROM asset_colors WHERE rank <= ?1 ORDER BY asset_id, rank",
+        )?;
+        let rows = statement.query_map([max_rank], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(StoreError::from)
+    }
+
     /// Returns whether the user has edited this asset's colors.
     /// Returns the ids of assets whose colors the user has set.
     pub fn manual_assets(&self) -> Result<Vec<i64>> {

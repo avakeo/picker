@@ -17,7 +17,8 @@ import type {
   AlbumView,
   ModelProgressEvent,
   EmbeddingStatusView,
-  ModelView
+  ModelView,
+  PaletteColorView
 } from "./generated/ui-contract";
 
 export type { AssetDetailView, AssetPageView, AssetSummaryView, IndexStatusView, RootView } from "./generated/ui-contract";
@@ -91,6 +92,7 @@ export type {
   ColorView,
   ModelProgressEvent,
   ModelView,
+  PaletteColorView,
   EmbeddingStatusView,
   TagAliasView,
   TagView
@@ -153,6 +155,8 @@ export function filterAssets(
     tagsAny: string[];
     tagsNone: string[];
     includeSuggested: boolean;
+    colors: string[];
+    colorScope: "main" | "any";
     formats: string[];
     minWidth: number | null;
     minHeight: number | null;
@@ -167,6 +171,10 @@ export function filterAssets(
       capturedTo: null
     }
   });
+}
+
+export function listPalette(): Promise<PaletteColorView[]> {
+  return invoke("palette_list");
 }
 
 export function listDuplicates(): Promise<AssetSummaryView[]> {

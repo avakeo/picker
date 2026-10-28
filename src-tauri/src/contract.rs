@@ -140,6 +140,7 @@ pub fn generated_typescript() -> String {
         TagRemoveRequest::decl(&config),
         AssetFilterRequest::decl(&config),
         ColorView::decl(&config),
+        PaletteColorView::decl(&config),
         ColorInput::decl(&config),
         ColorSetRequest::decl(&config),
         AlbumView::decl(&config),
@@ -206,6 +207,7 @@ pub fn generated_typescript() -> String {
            tagRemove: \"tag_remove\",
            assetFilter: \"asset_filter\",
            duplicatesList: \"duplicates_list\",
+           paletteList: \"palette_list\",
            colorSet: \"color_set\",
            colorReset: \"color_reset\",
            albumsList: \"albums_list\",
@@ -632,6 +634,21 @@ pub struct AssetFilterRequest {
     pub min_height: Option<u32>,
     pub captured_from: Option<i64>,
     pub captured_to: Option<i64>,
+    /// Palette color ids from `palette_list`. An image matches if it has any
+    /// of them. Empty means no color condition.
+    pub colors: Vec<String>,
+    /// `main` looks at the main color only, `any` at up to three colors.
+    pub color_scope: String,
+}
+
+/// One color of the 12-color search palette.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct PaletteColorView {
+    pub id: String,
+    pub name_ja: String,
+    pub hex: String,
 }
 
 /// An extracted or user-edited dominant color.

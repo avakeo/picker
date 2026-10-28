@@ -127,6 +127,7 @@ pub fn run() {
             commands::tag_remove,
             commands::asset_filter,
             commands::duplicates_list,
+            commands::palette_list,
             commands::color_set,
             commands::color_reset,
             commands::albums_list,
@@ -238,7 +239,9 @@ mod tests {
                 "minWidth": null,
                 "minHeight": null,
                 "capturedFrom": null,
-                "capturedTo": null
+                "capturedTo": null,
+                "colors": ["red"],
+                "colorScope": "any"
             }))
             .expect("request should deserialize");
         let filter = commands::filter_from_request(&request).expect("filter");
@@ -246,6 +249,14 @@ mod tests {
         assert_eq!(filter.tags.any, vec![2, 3]);
         assert_eq!(filter.tags.none, vec![4]);
         assert!(filter.tags.include_suggested);
+
+        let colors = commands::color_condition(&request).expect("colors");
+        assert_eq!(colors.palette_ids, vec!["red".to_owned()]);
+        assert_eq!(colors.scope, picker_core::ColorScope::AnyOfThree);
+
+        let mut bad_scope = request.clone();
+        bad_scope.color_scope = "dominant".to_owned();
+        assert!(commands::color_condition(&bad_scope).is_err());
 
         let mut invalid = request;
         invalid.tags_none = vec!["../1".to_owned()];
@@ -260,6 +271,15 @@ mod tests {
             "minHeight": null, "capturedFrom": null, "capturedTo": null
         });
         assert!(serde_json::from_value::<crate::contract::AssetFilterRequest>(old).is_err());
+    }
+
+    #[test]
+    fn palette_list_returns_the_twelve_colors() {
+        let colors = commands::palette_list().expect("palette");
+        assert_eq!(colors.len(), 12);
+        assert!(colors
+            .iter()
+            .any(|color| color.id == "red" && color.name_ja == "赤"));
     }
 
     #[test]

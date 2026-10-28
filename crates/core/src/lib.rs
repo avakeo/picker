@@ -3,6 +3,7 @@
 //! Domain and use-case layer for the Picker application.
 
 mod library;
+mod palette;
 mod portable;
 
 #[cfg(test)]
@@ -12,6 +13,7 @@ pub use library::{
     AssetDetail, AssetPage, AssetSummary, AssetTag, IndexStatus, Library, LibraryError,
     LocationView, Result, RootSummary, StageProgress, ThumbnailState, PORTABLE_EXPORT_VERSION,
 };
+pub use palette::{ColorCondition, ColorScope, Palette, PaletteColor};
 pub use portable::{PortableAlbum, PortableColor, PortableColors, PortableFeedback, PortableRoot};
 
 /// Entry point for application-independent core services.

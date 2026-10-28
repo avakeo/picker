@@ -21,7 +21,7 @@ use crate::contract::{
     AssetSummaryView, AssetTagView, ColorSetRequest, ColorView, CustomSuggestRequest,
     EmbeddingIndexRequest, EmbeddingStatusView, EventContract, FinderRevealRequest, IdRequest,
     IndexProgressChanged, IndexProgressChangedPayload, IndexStageProgress, IndexStatusView,
-    LocationView, ModelIdRequest, ModelProgressEvent, ModelView, RootAddRequest,
+    LocationView, ModelIdRequest, ModelProgressEvent, ModelView, PaletteColorView, RootAddRequest,
     RootEnabledRequest, RootView, SemanticSearchRequest, SimilarAssetsRequest, StageProgressView,
     TagAliasDeleteRequest, TagAliasRequest, TagAliasView, TagAssignRequest, TagCreateRequest,
     TagIdRequest, TagMergeRequest, TagParentRequest, TagRemoveRequest, TagRenameRequest, TagView,
@@ -180,6 +180,20 @@ fn tag_view(tag: picker_store::TagWithCount) -> TagView {
         origin: tag.tag.origin.as_str().to_owned(),
         asset_count: tag.asset_count,
     }
+}
+
+pub(crate) fn color_condition(
+    request: &AssetFilterRequest,
+) -> CommandResult<picker_core::ColorCondition> {
+    let scope = match request.color_scope.as_str() {
+        "main" => picker_core::ColorScope::Main,
+        "any" => picker_core::ColorScope::AnyOfThree,
+        other => return Err(format!("invalid color scope: {other}")),
+    };
+    Ok(picker_core::ColorCondition {
+        palette_ids: request.colors.clone(),
+        scope,
+    })
 }
 
 pub(crate) fn filter_from_request(request: &AssetFilterRequest) -> CommandResult<AssetFilter> {
@@ -706,12 +720,30 @@ pub fn asset_filter(
         Some(cursor) => parse_id(cursor)?,
         None => 0,
     };
-    let filter = filter_from_request(&request)?;
-    state
-        .library()
+    let mut filter = filter_from_request(&request)?;
+    let colors = color_condition(&request)?;
+    let library = state.library();
+    library
+        .restrict_to_colors(&mut filter, &colors)
+        .map_err(error)?;
+    library
         .filter_page(&filter, after, request.page_size)
         .map(page_view)
         .map_err(error)
+}
+
+#[tauri::command]
+pub fn palette_list() -> CommandResult<Vec<PaletteColorView>> {
+    let palette = picker_core::Palette::bundled().map_err(error)?;
+    Ok(palette
+        .colors()
+        .iter()
+        .map(|color| PaletteColorView {
+            id: color.id.clone(),
+            name_ja: color.name_ja.clone(),
+            hex: color.hex.clone(),
+        })
+        .collect())
 }
 
 #[tauri::command]
