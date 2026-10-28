@@ -449,3 +449,97 @@ fn duplicate_queries_find_exact_and_near_matches() -> Result<()> {
     assert!(store.assets().near_duplicates(1, 1)?.len() == 1);
     Ok(())
 }
+
+#[test]
+fn workers_on_separate_connections_never_claim_the_same_job() -> Result<()> {
+    let directory = TempDir::new().expect("temporary directory");
+    let path = directory.path().join("library.sqlite3");
+    let first = Store::open(&path)?;
+    let second = Store::open(&path)?;
+    let asset = first.assets().insert(&asset(1))?;
+    let target = StageTarget::Asset(asset.id);
+    first.jobs().enqueue(target, Stage::Metadata, 0, 3)?;
+    first.jobs().enqueue(target, Stage::Embedding, 0, 3)?;
+
+    let claimed = [
+        first
+            .jobs()
+            .dequeue_any(&[Stage::Metadata, Stage::Embedding])?,
+        second
+            .jobs()
+            .dequeue_any(&[Stage::Metadata, Stage::Embedding])?,
+        first
+            .jobs()
+            .dequeue_any(&[Stage::Metadata, Stage::Embedding])?,
+    ];
+    let ids: BTreeSet<i64> = claimed.iter().flatten().map(|job| job.id).collect();
+    assert_eq!(ids.len(), 2);
+    assert!(claimed[2].is_none());
+    assert!(claimed
+        .iter()
+        .flatten()
+        .all(|job| job.status == JobStatus::Running && job.attempts == 1));
+    Ok(())
+}
+
+#[test]
+fn dequeue_any_only_claims_the_requested_stages() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let asset = store.assets().insert(&asset(1))?;
+    let target = StageTarget::Asset(asset.id);
+    let embedding = store.jobs().enqueue(target, Stage::Embedding, 50, 3)?;
+    let metadata = store.jobs().enqueue(target, Stage::Metadata, 0, 3)?;
+    assert_eq!(
+        store
+            .jobs()
+            .dequeue_any(&[Stage::Metadata, Stage::Thumbnail])?
+            .map(|job| job.id),
+        Some(metadata.id)
+    );
+    assert!(store.jobs().dequeue_any(&[Stage::Thumbnail])?.is_none());
+    assert!(store.jobs().dequeue_any(&[])?.is_none());
+    assert_eq!(
+        store.jobs().dequeue(None)?.map(|job| job.id),
+        Some(embedding.id)
+    );
+    Ok(())
+}
+
+#[test]
+fn exhausted_pending_jobs_are_not_claimed_again() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let asset = store.assets().insert(&asset(1))?;
+    let job = store
+        .jobs()
+        .enqueue(StageTarget::Asset(asset.id), Stage::Metadata, 0, 1)?;
+    // Simulates a job left pending at its attempt limit by an older version.
+    store.connection().execute(
+        "UPDATE jobs SET attempts = max_attempts WHERE id = ?1",
+        [job.id],
+    )?;
+    assert!(store.jobs().dequeue(None)?.is_none());
+    Ok(())
+}
+
+#[test]
+fn enqueue_reuses_a_waiting_job_and_keeps_the_higher_priority() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let asset = store.assets().insert(&asset(1))?;
+    let target = StageTarget::Asset(asset.id);
+    let first = store.jobs().enqueue(target, Stage::Metadata, 5, 3)?;
+    let again = store.jobs().enqueue(target, Stage::Metadata, 1, 3)?;
+    assert_eq!(again.id, first.id);
+    assert_eq!(again.priority, 5);
+    assert_eq!(
+        store
+            .jobs()
+            .enqueue(target, Stage::Metadata, 9, 3)?
+            .priority,
+        9
+    );
+
+    let running = store.jobs().dequeue(None)?.expect("job");
+    let after_start = store.jobs().enqueue(target, Stage::Metadata, 0, 3)?;
+    assert_ne!(after_start.id, running.id);
+    Ok(())
+}

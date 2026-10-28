@@ -544,6 +544,25 @@ impl<'connection> JobRepository<'connection> {
             });
         }
         let (asset_id, location_id) = target_ids(target);
+        // A job that has not started yet already covers the new request.
+        let waiting: Option<i64> = self
+            .connection
+            .query_row(
+                "SELECT id FROM jobs
+                 WHERE asset_id IS ?1 AND location_id IS ?2 AND stage = ?3
+                   AND status IN ('pending', 'paused')
+                 ORDER BY id LIMIT 1",
+                params![asset_id, location_id, stage.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(id) = waiting {
+            self.connection.execute(
+                "UPDATE jobs SET priority = max(priority, ?1), updated_at = unixepoch() WHERE id = ?2",
+                params![priority, id],
+            )?;
+            return self.get(id);
+        }
         self.connection.execute(
             "INSERT INTO jobs
                 (asset_id, location_id, stage, priority, max_attempts)
@@ -618,27 +637,42 @@ impl<'connection> JobRepository<'connection> {
     }
 
     pub fn dequeue(&self, stage: Option<Stage>) -> Result<Option<Job>> {
-        let transaction = self.connection.unchecked_transaction()?;
-        let id = if let Some(stage) = stage {
-            transaction.query_row(
-                "SELECT id FROM jobs WHERE status = 'pending' AND stage = ?1 ORDER BY priority DESC, created_at, id LIMIT 1",
-                [stage.as_str()], |row| row.get(0)).optional()?
-        } else {
-            transaction.query_row(
-                "SELECT id FROM jobs WHERE status = 'pending' ORDER BY priority DESC, created_at, id LIMIT 1",
-                [], |row| row.get(0)).optional()?
-        };
-        let Some(id) = id else {
-            transaction.commit()?;
-            return Ok(None);
-        };
-        transaction.execute(
-            "UPDATE jobs SET status = 'running', attempts = attempts + 1, updated_at = unixepoch()
-             WHERE id = ?1 AND status = 'pending' AND attempts < max_attempts",
-            [id],
-        )?;
-        transaction.commit()?;
-        self.get(id).map(Some)
+        match stage {
+            Some(stage) => self.dequeue_any(&[stage]),
+            None => self.dequeue_any(Stage::ordered()),
+        }
+    }
+
+    /// Claims the highest-priority pending job of any of `stages`.
+    ///
+    /// Selection and claim run in one statement, so workers on separate
+    /// connections never claim the same job.
+    pub fn dequeue_any(&self, stages: &[Stage]) -> Result<Option<Job>> {
+        // Stage names are fixed identifiers, so they need no JSON escaping.
+        let stages = format!(
+            "[{}]",
+            stages
+                .iter()
+                .map(|stage| format!("\"{}\"", stage.as_str()))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let id: Option<i64> = self
+            .connection
+            .query_row(
+                "UPDATE jobs SET status = 'running', attempts = attempts + 1, updated_at = unixepoch()
+                 WHERE id = (
+                     SELECT id FROM jobs
+                     WHERE status = 'pending' AND attempts < max_attempts
+                       AND stage IN (SELECT value FROM json_each(?1))
+                     ORDER BY priority DESC, created_at, id LIMIT 1
+                 )
+                 RETURNING id",
+                [stages],
+                |row| row.get(0),
+            )
+            .optional()?;
+        id.map(|id| self.get(id)).transpose()
     }
 
     pub fn recover_running(&self) -> Result<usize> {
