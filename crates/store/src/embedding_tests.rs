@@ -151,3 +151,68 @@ fn invalid_vectors_are_rejected() {
         .upsert(asset.id, "clip", "v1", &vec![0.0; 4097])
         .is_err());
 }
+
+#[test]
+fn embeddings_can_be_listed_by_update_time_and_deleted_together() {
+    let store = store();
+    let mut ids = Vec::new();
+    for byte in [b'a', b'b'] {
+        ids.push(
+            store
+                .assets()
+                .insert(&NewAsset {
+                    blake3_hash: &[byte; 32],
+                    file_size: 10,
+                    width: Some(1),
+                    height: Some(1),
+                    format: Some("png"),
+                    captured_at: None,
+                    perceptual_hash: None,
+                })
+                .expect("asset")
+                .id,
+        );
+    }
+    for id in &ids {
+        store
+            .embeddings()
+            .upsert(*id, "clip", "v1", &[1.0, 0.0])
+            .expect("embedding");
+    }
+    store
+        .embeddings()
+        .upsert(ids[0], "other", "v1", &[1.0])
+        .expect("other model");
+    store
+        .connection()
+        .execute(
+            "UPDATE embeddings SET updated_at = 100 WHERE asset_id = ?1",
+            [ids[0]],
+        )
+        .expect("age");
+
+    let recent = store
+        .embeddings()
+        .list_updated_since("clip", "v1", 101)
+        .expect("recent");
+    assert_eq!(
+        recent.iter().map(|e| e.asset_id).collect::<Vec<_>>(),
+        vec![ids[1]]
+    );
+    assert_eq!(
+        store
+            .embeddings()
+            .list_updated_since("clip", "v1", 100)
+            .expect("inclusive")
+            .len(),
+        2
+    );
+    assert_eq!(store.embeddings().delete_all().expect("delete"), 3);
+    assert_eq!(
+        store
+            .embeddings()
+            .count_for_model("clip", "v1")
+            .expect("count"),
+        0
+    );
+}

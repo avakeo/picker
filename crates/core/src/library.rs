@@ -630,7 +630,7 @@ impl Library {
 
     /// Queues image work for every present file of a root that lacks a
     /// perceptual hash or a thumbnail, including files whose cache was removed.
-    fn enqueue_unprocessed(&self, root_id: i64) -> Result<usize> {
+    pub(crate) fn enqueue_unprocessed(&self, root_id: i64) -> Result<usize> {
         let mut queued = 0;
         for location in self.store.locations().list_for_root(root_id)? {
             if location.status != LocationStatus::Present
@@ -831,6 +831,18 @@ impl Library {
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         }
         Ok(())
+    }
+
+    /// Empties the in-memory vector index while keeping the model.
+    pub(crate) fn clear_vector_index(&self) {
+        if let Some(state) = self
+            .vectors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_mut()
+        {
+            state.index = BruteForceIndex::new(state.index.dimensions());
+        }
     }
 
     pub fn embedding_progress(&self) -> Result<Option<EmbeddingProgress>> {

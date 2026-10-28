@@ -24,6 +24,7 @@
     deleteTag,
     exportPortable,
     exportXmp,
+    clearCache,
     getSetting,
     filterAssets,
     importPortable,
@@ -209,6 +210,16 @@
     reviewRatio = Number((await getSetting("review.high_ratio")) ?? "0.5");
     imageWorkers = (await getSetting("index.image_workers")) ?? "2";
     batteryPolicy = (await getSetting("index.battery_policy")) ?? "reduce";
+  }
+
+  let cacheMessage = "";
+
+  async function handleClearCache(target: "thumbnails" | "embeddings" | "all") {
+    await guard(async () => {
+      const report = await clearCache(target);
+      cacheMessage = `再生成を登録しました（画像 ${report.imageJobs} 件、埋め込み ${report.embeddingJobs} 件）`;
+      await Promise.all([refreshPage(true), refreshEmbeddings(), refreshStatus()]);
+    });
   }
 
   async function changeWorkerSetting(key: string, value: string) {
@@ -1024,6 +1035,13 @@
           {/each}
         </select>
       </label>
+      <div class="cache">
+        キャッシュを削除して作り直す
+        <button type="button" onclick={() => void handleClearCache("thumbnails")}>サムネイル</button>
+        <button type="button" onclick={() => void handleClearCache("embeddings")}>埋め込み</button>
+        <button type="button" onclick={() => void handleClearCache("all")}>すべて</button>
+        {#if cacheMessage}<p>{cacheMessage}</p>{/if}
+      </div>
       <details class="about">
         <summary>このアプリについて</summary>
         <p>Picker 0.1.0（開発版）・MIT License</p>

@@ -19,7 +19,8 @@ import type {
   EmbeddingStatusView,
   ModelView,
   PaletteColorView,
-  AlbumQueryView
+  AlbumQueryView,
+  CacheClearView
 } from "./generated/ui-contract";
 
 export type { AssetDetailView, AssetPageView, AssetSummaryView, IndexStatusView, RootView } from "./generated/ui-contract";
@@ -320,6 +321,10 @@ export function getSetting(key: string): Promise<string | null> {
 
 export function setSetting(key: string, value: string): Promise<void> {
   return invoke("setting_set", { request: { key, value } });
+}
+
+export function clearCache(target: "thumbnails" | "embeddings" | "all"): Promise<CacheClearView> {
+  return invoke("cache_clear", { request: { target } });
 }
 
 export function exportXmp(assetId: string): Promise<number> {

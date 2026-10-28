@@ -75,6 +75,31 @@ impl<'connection> EmbeddingRepository<'connection> {
             .map_err(StoreError::from)
     }
 
+    /// Embeddings of a model written at or after `since` (Unix seconds).
+    /// The bound is inclusive because `updated_at` has a one-second
+    /// resolution; callers upsert the results, so repeats are harmless.
+    pub fn list_updated_since(
+        &self,
+        model_id: &str,
+        model_version: &str,
+        since: i64,
+    ) -> Result<Vec<Embedding>> {
+        let mut statement = self.connection.prepare(
+            "SELECT asset_id, model_id, model_version, dimensions, vector, updated_at
+             FROM embeddings
+             WHERE model_id = ?1 AND model_version = ?2 AND updated_at >= ?3
+             ORDER BY asset_id",
+        )?;
+        let rows = statement.query_map(params![model_id, model_version, since], decode)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(StoreError::from)
+    }
+
+    /// Removes every stored embedding of every model.
+    pub fn delete_all(&self) -> Result<usize> {
+        Ok(self.connection.execute("DELETE FROM embeddings", [])?)
+    }
+
     pub fn count_for_model(&self, model_id: &str, model_version: &str) -> Result<u32> {
         Ok(self.connection.query_row(
             "SELECT COUNT(*) FROM embeddings WHERE model_id = ?1 AND model_version = ?2",

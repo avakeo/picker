@@ -448,6 +448,15 @@ impl<'connection> StageStateRepository<'connection> {
         Self { connection }
     }
 
+    /// Forgets the state of one stage for every target, so the stage reads
+    /// as never run.
+    pub fn clear_stage(&self, stage: Stage) -> Result<usize> {
+        Ok(self.connection.execute(
+            "DELETE FROM stage_states WHERE stage = ?1",
+            [stage.as_str()],
+        )?)
+    }
+
     pub fn upsert(
         &self,
         target: StageTarget,

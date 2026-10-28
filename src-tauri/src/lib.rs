@@ -122,6 +122,7 @@ pub fn run() {
             commands::setting_get,
             commands::setting_set,
             commands::xmp_export,
+            commands::cache_clear,
             commands::tag_reject,
             commands::auto_tag,
             commands::tag_remove,

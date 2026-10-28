@@ -3,6 +3,7 @@ use std::fs;
 use image::{DynamicImage, Rgba, RgbaImage};
 
 use super::*;
+use picker_imaging::ThumbnailSize;
 use picker_store::Stage;
 
 fn png_bytes(value: u8) -> Vec<u8> {
@@ -1640,4 +1641,81 @@ fn xmp_export_writes_only_when_enabled_and_preserves_existing_fields() {
     let written = fs::read_to_string(&sidecar).expect("read");
     assert!(written.contains("<xmp:Rating>4</xmp:Rating>"));
     assert!(written.contains("<rdf:li>海辺</rdf:li>"));
+}
+
+#[test]
+fn clearing_thumbnails_queues_regeneration_and_keeps_user_data() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(30)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(90)).expect("write");
+    // A file the app did not create must survive the removal.
+    fs::write(cache.path().join("keep.txt"), b"keep").expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let asset = library.asset_page(0, 10).expect("page").items[0].id;
+    library
+        .set_asset_colors(asset, &[("#010203".to_owned(), 1.0)])
+        .expect("manual color");
+    let tag = library.create_tag("keep", "残す", None, None).expect("tag");
+    library
+        .set_tag_on_assets(&[asset], tag.id, picker_store::TagState::Confirmed)
+        .expect("assign");
+
+    let report = library.clear_cache(CacheTarget::Thumbnails).expect("clear");
+    assert_eq!(report.image_jobs, 2);
+    assert_eq!(report.embedding_jobs, 0);
+    assert!(!library.thumbnail_path(asset, ThumbnailSize::Grid).exists());
+    assert!(cache.path().join("keep.txt").exists());
+    assert_eq!(
+        library.asset_summary(asset).expect("summary").thumbnail,
+        ThumbnailState::Missing
+    );
+
+    assert_eq!(library.run_queued_image_jobs().expect("regenerate"), 2);
+    assert!(library.thumbnail_path(asset, ThumbnailSize::Grid).is_file());
+    let detail = library.asset_detail(asset).expect("detail");
+    assert_eq!(detail.colors[0].hex, "#010203");
+    assert!(detail.tags.iter().any(|assigned| assigned.tag.id == tag.id));
+}
+
+#[test]
+fn clearing_embeddings_empties_the_index_and_queues_jobs() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(7)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(8)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    library
+        .set_embedder(Some(std::sync::Arc::new(MockEmbedder)))
+        .expect("embedder");
+    assert_eq!(library.index_embeddings(10).expect("index"), 2);
+
+    let report = library.clear_cache(CacheTarget::All).expect("clear");
+    assert_eq!(report.embedding_jobs, 2);
+    assert_eq!(report.image_jobs, 2);
+    let progress = library
+        .embedding_progress()
+        .expect("progress")
+        .expect("model");
+    assert_eq!((progress.indexed, progress.missing), (0, 2));
+    assert!(library
+        .semantic_search("anything", 10)
+        .expect("search")
+        .is_empty());
+}
+
+#[test]
+fn cache_targets_are_parsed_strictly() {
+    assert_eq!(
+        CacheTarget::parse("thumbnails").expect("thumbnails"),
+        CacheTarget::Thumbnails
+    );
+    assert_eq!(CacheTarget::parse("all").expect("all"), CacheTarget::All);
+    for invalid in ["", "Thumbnails", "../thumbnails", "database"] {
+        assert!(CacheTarget::parse(invalid).is_err(), "{invalid}");
+    }
 }

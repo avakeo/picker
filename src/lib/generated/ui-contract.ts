@@ -99,6 +99,10 @@ export type FeedbackUndoRequest = { eventId: string, };
 
 export type PortablePathRequest = { path: string, };
 
+export type CacheClearRequest = { target: string, };
+
+export type CacheClearView = { imageJobs: number, embeddingJobs: number, };
+
 export type SettingRequest = { key: string, value: string, };
 
 export type SettingGetRequest = { key: string, };
@@ -229,6 +233,7 @@ export const COMMANDS = {
            settingGet: "setting_get",
            settingSet: "setting_set",
            xmpExport: "xmp_export",
+           cacheClear: "cache_clear",
            tagRename: "tag_rename",
            tagDelete: "tag_delete",
            tagSetParent: "tag_set_parent",

@@ -9,8 +9,8 @@ use picker_store::{AssetFilter, LocationStatus, RootStatus, TagFilter, TagState}
 use tauri::State;
 
 use crate::contract::{
-    CustomTrainRequest, FeedbackUndoRequest, PortablePathRequest, ReviewConfirmRequest,
-    ReviewRequest, SettingGetRequest, SettingRequest,
+    CacheClearRequest, CacheClearView, CustomTrainRequest, FeedbackUndoRequest,
+    PortablePathRequest, ReviewConfirmRequest, ReviewRequest, SettingGetRequest, SettingRequest,
 };
 use picker_ml::ModelRegistry;
 use std::sync::Arc;
@@ -1305,6 +1305,21 @@ pub(crate) fn emit_index_progress(app: &tauri::AppHandle) {
         }
         Err(error) => eprintln!("index status unavailable: {error}"),
     }
+}
+
+#[tauri::command]
+pub fn cache_clear(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    request: CacheClearRequest,
+) -> CommandResult<CacheClearView> {
+    let target = picker_core::CacheTarget::parse(&request.target).map_err(error)?;
+    let report = state.library().clear_cache(target).map_err(error)?;
+    emit_index_progress(&app);
+    Ok(CacheClearView {
+        image_jobs: u32::try_from(report.image_jobs).unwrap_or(u32::MAX),
+        embedding_jobs: u32::try_from(report.embedding_jobs).unwrap_or(u32::MAX),
+    })
 }
 
 #[tauri::command]

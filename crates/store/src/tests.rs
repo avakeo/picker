@@ -543,3 +543,25 @@ fn enqueue_reuses_a_waiting_job_and_keeps_the_higher_priority() -> Result<()> {
     assert_ne!(after_start.id, running.id);
     Ok(())
 }
+
+#[test]
+fn clearing_a_stage_keeps_other_stages() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let asset = store.assets().insert(&asset(1))?;
+    let target = StageTarget::Asset(asset.id);
+    for stage in [Stage::Thumbnail, Stage::Embedding] {
+        store
+            .stage_states()
+            .upsert(target, stage, StageStatus::Succeeded, "v1", None)?;
+    }
+    assert_eq!(store.stage_states().clear_stage(Stage::Embedding)?, 1);
+    assert!(store
+        .stage_states()
+        .get(target, Stage::Embedding)?
+        .is_none());
+    assert!(store
+        .stage_states()
+        .get(target, Stage::Thumbnail)?
+        .is_some());
+    Ok(())
+}

@@ -126,6 +126,8 @@ pub fn generated_typescript() -> String {
         ReviewConfirmRequest::decl(&config),
         FeedbackUndoRequest::decl(&config),
         PortablePathRequest::decl(&config),
+        CacheClearRequest::decl(&config),
+        CacheClearView::decl(&config),
         SettingRequest::decl(&config),
         SettingGetRequest::decl(&config),
         TagAliasView::decl(&config),
@@ -200,6 +202,7 @@ pub fn generated_typescript() -> String {
            settingGet: \"setting_get\",
            settingSet: \"setting_set\",
            xmpExport: \"xmp_export\",
+           cacheClear: \"cache_clear\",
            tagRename: \"tag_rename\",
            tagDelete: \"tag_delete\",
            tagSetParent: \"tag_set_parent\",
@@ -271,6 +274,23 @@ mod tests {
 
         let invalid = r#"{"stages":[],"paused":false,"extra":true}"#;
         assert!(serde_json::from_str::<IndexProgressChangedPayload>(invalid).is_err());
+    }
+
+    #[test]
+    fn cache_clear_request_rejects_unknown_fields() {
+        let request: CacheClearRequest =
+            serde_json::from_str(r#"{"target":"thumbnails"}"#).expect("request");
+        assert_eq!(request.target, "thumbnails");
+        assert!(
+            serde_json::from_str::<CacheClearRequest>(r#"{"target":"all","path":"/"}"#).is_err()
+        );
+        let view = serde_json::to_value(CacheClearView {
+            image_jobs: 2,
+            embedding_jobs: 1,
+        })
+        .expect("view");
+        assert_eq!(view["imageJobs"], 2);
+        assert_eq!(view["embeddingJobs"], 1);
     }
 
     #[test]
@@ -530,6 +550,23 @@ pub struct FeedbackUndoRequest {
 #[ts(rename_all = "camelCase")]
 pub struct PortablePathRequest {
     pub path: String,
+}
+
+/// Request naming the cache to remove: `thumbnails`, `embeddings`, or `all`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct CacheClearRequest {
+    pub target: String,
+}
+
+/// Work queued to regenerate a removed cache.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct CacheClearView {
+    pub image_jobs: u32,
+    pub embedding_jobs: u32,
 }
 
 /// One setting value.
