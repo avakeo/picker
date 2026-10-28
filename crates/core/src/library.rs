@@ -24,6 +24,8 @@ use crate::portable::{PortableAlbum, PortableColors, PortableFeedback, PortableR
 
 /// Version recorded for the image stages (metadata, thumbnail, phash, color).
 pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v1";
+/// Decisions on a custom tag after which its suggestions are recomputed.
+pub const RETRAIN_AFTER_FEEDBACK: usize = 5;
 /// Version recorded for the zero-shot auto-tag stage.
 pub(crate) const AUTO_TAG_STAGE_VERSION: &str = "zero-shot-v1";
 
@@ -256,6 +258,9 @@ pub struct Library {
     embedder: Mutex<Option<Arc<dyn Embedder>>>,
     vectors: Mutex<Option<VectorState>>,
     tagger: Mutex<Option<Arc<TaggerState>>>,
+    /// Decisions on each custom tag since its suggestions were last
+    /// recomputed (design 8.4, retraining).
+    unlearned_feedback: Mutex<std::collections::HashMap<i64, usize>>,
 }
 
 struct VectorState {
@@ -298,6 +303,7 @@ impl Library {
             embedder: Mutex::new(None),
             vectors: Mutex::new(None),
             tagger: Mutex::new(None),
+            unlearned_feedback: Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -311,6 +317,7 @@ impl Library {
             embedder: Mutex::new(None),
             vectors: Mutex::new(None),
             tagger: Mutex::new(None),
+            unlearned_feedback: Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -1386,7 +1393,41 @@ impl Library {
                 assignment.as_ref(),
             )?;
         }
+        self.note_custom_feedback(tag_id, asset_ids.len())?;
         Ok(changed)
+    }
+
+    /// Counts decisions on a custom tag and recomputes its suggestions once
+    /// [`RETRAIN_AFTER_FEEDBACK`] have accumulated.
+    fn note_custom_feedback(&self, tag_id: i64, decisions: usize) -> Result<()> {
+        if self.store.tags().get(tag_id)?.namespace != "custom" {
+            return Ok(());
+        }
+        let due = {
+            let mut counts = self
+                .unlearned_feedback
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let count = counts.entry(tag_id).or_insert(0);
+            *count += decisions;
+            *count >= RETRAIN_AFTER_FEEDBACK
+        };
+        if due {
+            self.relearn_custom_tag(tag_id);
+        }
+        Ok(())
+    }
+
+    /// Recomputes the suggestions of a custom tag with the method its
+    /// examples allow (prototype, or the classifier from ten examples each).
+    /// Without a model there is nothing to recompute, so errors are ignored.
+    fn relearn_custom_tag(&self, tag_id: i64) {
+        if self.suggest_custom_tag(tag_id, 500).is_ok() {
+            self.unlearned_feedback
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&tag_id);
+        }
     }
 
     pub fn remove_tag_from_assets(&self, asset_ids: &[i64], tag_id: i64) -> Result<usize> {
@@ -1415,6 +1456,7 @@ impl Library {
                 Some(&assignment),
             )?;
         }
+        self.note_custom_feedback(tag_id, asset_ids.len())?;
         Ok(changed)
     }
 
@@ -1687,8 +1729,9 @@ impl Library {
                 }
             }
         }
+        // A confirmed review is a natural point to learn (design 8.4).
         if tag.namespace == "custom" {
-            let _ = self.train_custom_tag(tag_id);
+            self.relearn_custom_tag(tag_id);
         }
         Ok(events)
     }

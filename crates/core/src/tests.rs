@@ -1847,6 +1847,126 @@ fn changing_file_content_creates_a_new_asset_and_keeps_the_old_tags_on_the_old_o
     assert!(confirmed_tag_names(&library, edited_asset).is_empty());
 }
 
+fn custom_tag_library(count: u8) -> (tempfile::TempDir, tempfile::TempDir, Library, Vec<i64>, i64) {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    for index in 0..count {
+        fs::write(
+            media.path().join(format!("{index}.png")),
+            png_bytes(index.wrapping_mul(37)),
+        )
+        .expect("write");
+    }
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    library
+        .set_embedder(Some(std::sync::Arc::new(MockEmbedder)))
+        .expect("embedder");
+    library.index_embeddings(100).expect("embeddings");
+    let ids = library
+        .asset_page(0, 100)
+        .expect("page")
+        .items
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    let tag = library
+        .create_tag("robot", "ロボット", None, None)
+        .expect("tag");
+    let tag = library.convert_tag_to_custom(tag.id).expect("custom");
+    (media, cache, library, ids, tag.id)
+}
+
+fn tag_state(library: &Library, asset_id: i64, tag_id: i64) -> Option<picker_store::TagState> {
+    library
+        .asset_detail(asset_id)
+        .expect("detail")
+        .tags
+        .into_iter()
+        .find(|assigned| assigned.tag.id == tag_id)
+        .map(|assigned| assigned.assignment.state)
+}
+
+/// T3-2: adding examples updates the suggestions without a separate request
+/// once enough decisions have accumulated.
+#[test]
+fn custom_suggestions_update_after_enough_manual_decisions() {
+    let (_media, _cache, library, ids, tag) = custom_tag_library(7);
+    library
+        .set_tag_on_assets(&ids[..3], tag, picker_store::TagState::Confirmed)
+        .expect("three examples");
+    assert_eq!(tag_state(&library, ids[6], tag), None);
+
+    library
+        .set_tag_on_assets(&ids[3..5], tag, picker_store::TagState::Confirmed)
+        .expect("two more examples");
+    assert_eq!(
+        tag_state(&library, ids[6], tag),
+        Some(picker_store::TagState::Suggested)
+    );
+    assert_eq!(
+        tag_state(&library, ids[0], tag),
+        Some(picker_store::TagState::Confirmed)
+    );
+}
+
+/// T3-5: confirming a review relearns the tag even with few examples.
+#[test]
+fn confirming_a_review_relearns_the_custom_tag() {
+    let (_media, _cache, library, ids, tag) = custom_tag_library(6);
+    library
+        .set_tag_on_assets(&ids[..2], tag, picker_store::TagState::Confirmed)
+        .expect("examples");
+    assert_eq!(tag_state(&library, ids[5], tag), None);
+
+    library
+        .confirm_review(tag, &[ids[2]], &[ids[3]])
+        .expect("review");
+    assert_eq!(
+        tag_state(&library, ids[5], tag),
+        Some(picker_store::TagState::Suggested)
+    );
+    assert_eq!(
+        tag_state(&library, ids[3], tag),
+        Some(picker_store::TagState::Rejected)
+    );
+}
+
+/// Without a model, decisions are still recorded and nothing fails.
+#[test]
+fn custom_tag_decisions_without_a_model_do_not_fail() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    for index in 0..5 {
+        fs::write(
+            media.path().join(format!("{index}.png")),
+            png_bytes(index * 40),
+        )
+        .expect("write");
+    }
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let ids: Vec<i64> = library
+        .asset_page(0, 10)
+        .expect("page")
+        .items
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    let tag = library
+        .create_tag("robot", "ロボット", None, None)
+        .expect("tag");
+    let tag = library.convert_tag_to_custom(tag.id).expect("custom");
+    assert_eq!(
+        library
+            .set_tag_on_assets(&ids, tag.id, picker_store::TagState::Confirmed)
+            .expect("decisions"),
+        5
+    );
+}
+
 /// T1-2: removing a root deletes its locations, but an asset with a file in
 /// another root keeps its confirmed tags.
 #[test]
