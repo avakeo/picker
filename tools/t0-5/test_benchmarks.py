@@ -8,4 +8,7 @@ class Tests(unittest.TestCase):
  def test_top_roundtrip(self):
   with tempfile.TemporaryDirectory()as d:
    p=Path(d)/"tops";p.write_text("0,1;2;3\n1,4;5;6\n");self.assertEqual(bench.read_top(p),[[1,2,3],[4,5,6]])
+ def test_rss_is_reported_in_bytes(self):
+  # Any running Python process uses more than one mebibyte.
+  self.assertGreater(bench.rss(),1<<20)
 if __name__=="__main__":unittest.main()

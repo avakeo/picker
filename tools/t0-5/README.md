@@ -16,7 +16,7 @@ rustc --edition=2021 -O tools/t0-5/vector_benchmark.rs -o /tmp/picker-vector-ben
   --dimensions 512 --count 10000 --query-count 20 \
   --input /tmp/vectors.bin --queries /tmp/queries.bin \
   --precision f32 --warmups 3 \
-  --top-k 10
+  --top-k 10 --top-output /tmp/picker-vector-benchmark.top
 ```
 
 全ケースの比較は次で実行します。
@@ -26,6 +26,8 @@ python3 tools/t0-5/run_benchmarks.py \
   --binary /tmp/picker-vector-benchmark \
   --output /tmp/picker-t0-5-results.csv
 ```
+
+sqlite-vecの各ケースは別プロセスで計測します。Rust側と同じく、ケースごとのピークメモリには入力ファイルの読み込みを含みます。
 
 出力はリポジトリ外のCSVに保存します。計測環境とコマンドをADRへ転記してください。
 
