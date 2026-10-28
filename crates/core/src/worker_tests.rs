@@ -224,6 +224,8 @@ fn worker_settings_default_validate_and_follow_the_battery_policy() {
         (IMAGE_WORKERS_KEY, "two"),
         (IMAGE_WORKERS_KEY, ""),
         (BATTERY_POLICY_KEY, "eco"),
+        (ML_WORKERS_KEY, "0"),
+        (ML_WORKERS_KEY, "3"),
     ] {
         assert!(
             matches!(
@@ -245,12 +247,16 @@ fn worker_settings_default_validate_and_follow_the_battery_policy() {
 
     let policy = |battery| WorkerSettings {
         image_workers: 4,
+        ml_workers: 2,
         battery,
     };
     assert_eq!(policy(BatteryPolicy::Normal).active_image_workers(true), 4);
     assert_eq!(policy(BatteryPolicy::Reduce).active_image_workers(true), 1);
     assert_eq!(policy(BatteryPolicy::Pause).active_image_workers(true), 0);
     assert_eq!(policy(BatteryPolicy::Pause).active_image_workers(false), 4);
+    assert_eq!(policy(BatteryPolicy::Normal).active_ml_workers(true), 2);
+    assert_eq!(policy(BatteryPolicy::Reduce).active_ml_workers(true), 1);
+    assert_eq!(policy(BatteryPolicy::Pause).active_ml_workers(true), 0);
 }
 
 #[test]
@@ -284,9 +290,11 @@ fn pool_processes_the_queue_in_parallel_and_reports_progress() {
     assert_eq!(pool.active_workers(), 3);
     pool.apply_settings(WorkerSettings {
         image_workers: 5,
+        ml_workers: 2,
         battery: BatteryPolicy::Pause,
     });
     assert_eq!(pool.active_workers(), 5);
+    assert_eq!(pool.active_ml_workers(), 2);
     assert!(wait_until(Duration::from_secs(20), || fixture.processed() == 12));
     assert!(wait_until(Duration::from_secs(5), || calls
         .load(Ordering::Relaxed)
@@ -328,5 +336,206 @@ fn pool_requeues_jobs_left_running_by_a_crash() {
     let pool =
         WorkerPool::start(fixture.config(), FakePower::new(false), Arc::new(|| {})).expect("pool");
     assert!(wait_until(Duration::from_secs(20), || fixture.processed() == 1));
+    pool.stop();
+}
+
+/// Returns the same unit vector for every input, or fails for files whose
+/// name contains "fail".
+struct ConstantEmbedder;
+
+impl picker_ml::Embedder for ConstantEmbedder {
+    fn embed_image(
+        &self,
+        path: &std::path::Path,
+    ) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        if path.to_string_lossy().contains("fail") {
+            return Err(picker_ml::EmbeddingError::Image("broken".to_owned()));
+        }
+        Ok(vec![1.0, 0.0])
+    }
+
+    fn embed_text(&self, _text: &str) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        Ok(vec![1.0, 0.0])
+    }
+
+    fn dimensions(&self) -> usize {
+        2
+    }
+
+    fn model_id(&self) -> &str {
+        "constant"
+    }
+
+    fn model_version(&self) -> &str {
+        "v1"
+    }
+}
+
+fn embedder() -> Arc<dyn picker_ml::Embedder> {
+    Arc::new(ConstantEmbedder)
+}
+
+fn stage_status(library: &Library, asset_id: i64, stage: Stage) -> Option<StageStatus> {
+    library
+        .store()
+        .stage_states()
+        .get(StageTarget::Asset(asset_id), stage)
+        .expect("state")
+        .map(|state| state.status)
+}
+
+#[test]
+fn model_stages_follow_image_jobs_once_a_model_is_set() {
+    let fixture = Fixture::with_images(3);
+    let library = &fixture.library;
+    library.run_queued_image_jobs().expect("images");
+    // Without a model the embedding jobs wait.
+    assert!(library.run_next_ml_job().expect("ml").is_none());
+
+    library.set_worker_embedder(Some(embedder()));
+    // Three embeddings, then three auto-tag and three custom jobs.
+    assert_eq!(library.run_queued_ml_jobs().expect("ml"), 9);
+    for asset_id in fixture.asset_ids() {
+        assert!(library
+            .store()
+            .embeddings()
+            .get(asset_id, "constant", "v1")
+            .expect("embedding")
+            .is_some());
+        for stage in [Stage::Embedding, Stage::AutoTag, Stage::CustomSuggest] {
+            assert_eq!(
+                stage_status(library, asset_id, stage),
+                Some(StageStatus::Succeeded),
+                "{stage:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn ui_library_picks_up_vectors_written_by_workers() {
+    let fixture = Fixture::with_images(2);
+    fixture.library.run_queued_image_jobs().expect("images");
+    let ui = Library::open(
+        fixture.data.path().join("library.sqlite3"),
+        fixture.data.path().join("cache"),
+    )
+    .expect("ui library");
+    ui.set_embedder(Some(embedder())).expect("ui embedder");
+    assert!(ui
+        .semantic_search("anything", 10)
+        .expect("search")
+        .is_empty());
+
+    fixture.library.set_worker_embedder(Some(embedder()));
+    fixture.library.run_queued_ml_jobs().expect("ml");
+    assert_eq!(ui.sync_vectors().expect("sync"), 2);
+    assert_eq!(ui.semantic_search("anything", 10).expect("search").len(), 2);
+    // Later syncs only reread the current second at most.
+    assert!(ui.sync_vectors().expect("sync again") <= 2);
+}
+
+#[test]
+fn custom_tags_are_suggested_per_asset_and_keep_user_decisions() {
+    let fixture = Fixture::with_images(5);
+    let library = &fixture.library;
+    library.run_queued_image_jobs().expect("images");
+    library.set_worker_embedder(Some(embedder()));
+    library.run_queued_ml_jobs().expect("ml");
+    let ids = fixture.asset_ids();
+    let tag = library.create_tag("cat", "ねこ", None, None).expect("tag");
+    let tag = library.convert_tag_to_custom(tag.id).expect("custom");
+    library
+        .set_tag_on_assets(&ids[..3], tag.id, picker_store::TagState::Confirmed)
+        .expect("examples");
+    library
+        .set_tag_on_assets(&ids[3..4], tag.id, picker_store::TagState::Rejected)
+        .expect("rejected");
+
+    let model = ConstantEmbedder;
+    assert_eq!(
+        library
+            .suggest_custom_for_asset(&model, ids[4])
+            .expect("suggest"),
+        1
+    );
+    assert_eq!(
+        library
+            .suggest_custom_for_asset(&model, ids[3])
+            .expect("rejected stays"),
+        0
+    );
+    let state_of = |asset_id: i64| {
+        library
+            .asset_detail(asset_id)
+            .expect("detail")
+            .tags
+            .into_iter()
+            .find(|assigned| assigned.tag.id == tag.id)
+            .map(|assigned| assigned.assignment.state)
+    };
+    assert_eq!(state_of(ids[4]), Some(picker_store::TagState::Suggested));
+    assert_eq!(state_of(ids[3]), Some(picker_store::TagState::Rejected));
+    assert_eq!(state_of(ids[0]), Some(picker_store::TagState::Confirmed));
+}
+
+#[test]
+fn failing_embeddings_are_recorded_after_retries() {
+    let fixture = Fixture::with_images(1);
+    let media = &fixture.library.list_roots().expect("roots")[0]
+        .root
+        .absolute_path;
+    fs::write(std::path::Path::new(media).join("fail.png"), png_bytes(3)).expect("write");
+    let root_id = fixture.library.list_roots().expect("roots")[0].root.id;
+    fixture.library.sync_root(root_id).expect("sync");
+    fixture.library.run_queued_image_jobs().expect("images");
+    fixture.library.set_worker_embedder(Some(embedder()));
+    // One good image (3 jobs) and three attempts for the failing one.
+    assert_eq!(fixture.library.run_queued_ml_jobs().expect("ml"), 6);
+    let failed = fixture
+        .asset_ids()
+        .into_iter()
+        .filter(|id| {
+            stage_status(&fixture.library, *id, Stage::Embedding) == Some(StageStatus::Failed)
+        })
+        .count();
+    assert_eq!(failed, 1);
+}
+
+#[test]
+fn missing_embeddings_are_queued_for_a_new_model() {
+    let fixture = Fixture::with_images(2);
+    let library = &fixture.library;
+    library.run_queued_image_jobs().expect("images");
+    library.set_worker_embedder(Some(embedder()));
+    library.run_queued_ml_jobs().expect("ml");
+    assert_eq!(
+        library.enqueue_missing_embeddings().expect("none missing"),
+        0
+    );
+    library.store().embeddings().delete_all().expect("delete");
+    assert_eq!(library.enqueue_missing_embeddings().expect("queued"), 2);
+    library.set_worker_embedder(None);
+    assert_eq!(library.enqueue_missing_embeddings().expect("no model"), 0);
+}
+
+#[test]
+fn pool_runs_model_stages_after_the_embedder_arrives() {
+    let fixture = Fixture::with_images(4);
+    let pool =
+        WorkerPool::start(fixture.config(), FakePower::new(false), Arc::new(|| {})).expect("pool");
+    assert!(wait_until(Duration::from_secs(20), || fixture.processed() == 4));
+    let embedded = || {
+        fixture
+            .library
+            .store()
+            .embeddings()
+            .count_for_model("constant", "v1")
+            .expect("count")
+    };
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(embedded(), 0);
+    pool.set_embedder(Some(embedder()));
+    assert!(wait_until(Duration::from_secs(20), || embedded() == 4));
     pool.stop();
 }

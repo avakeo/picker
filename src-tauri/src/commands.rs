@@ -60,6 +60,26 @@ impl AppState {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(pool);
     }
 
+    /// Loads the active model into the library and the workers, and queues
+    /// embeddings that the model still lacks.
+    pub fn reload_embedder(&self) -> CommandResult<()> {
+        let embedder = {
+            let library = self.library();
+            configure_embedder(&library, &self.models)?;
+            library.enqueue_missing_embeddings().map_err(error)?;
+            library.current_embedder()
+        };
+        if let Some(pool) = self
+            .workers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            pool.set_embedder(embedder);
+        }
+        Ok(())
+    }
+
     fn apply_worker_settings(&self, settings: picker_core::WorkerSettings) {
         if let Some(pool) = self
             .workers
@@ -1150,12 +1170,22 @@ pub async fn model_install(
     })
     .await
     .map_err(|error| error.to_string())?
-    .map_err(error)
+    .map_err(error)?;
+    // A reinstalled active model replaces the one in use.
+    state.reload_embedder()
 }
 
 #[tauri::command]
-pub fn model_activate(state: State<'_, AppState>, request: ModelIdRequest) -> CommandResult<()> {
-    state.models.set_active(&request.id).map_err(error)
+pub fn model_activate(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    request: ModelIdRequest,
+) -> CommandResult<()> {
+    state.models.set_active(&request.id).map_err(error)?;
+    // Use the new model now rather than after a restart.
+    state.reload_embedder()?;
+    emit_index_progress(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1164,7 +1194,9 @@ pub fn model_remove(state: State<'_, AppState>, request: ModelIdRequest) -> Comm
         .id
         .split_once('@')
         .ok_or_else(|| "モデル ID は id@version 形式で指定してください。".to_owned())?;
-    state.models.remove(id, version).map_err(error)
+    state.models.remove(id, version).map_err(error)?;
+    // Removing the active model stops model work until another is chosen.
+    state.reload_embedder()
 }
 
 #[tauri::command]
@@ -1231,7 +1263,7 @@ pub fn similar_assets(
 }
 
 /// Loads the active embedding model and installs it into the library.
-pub fn configure_embedder(library: &mut Library, registry: &ModelRegistry) -> Result<(), String> {
+pub fn configure_embedder(library: &Library, registry: &ModelRegistry) -> Result<(), String> {
     let active = registry
         .list()
         .into_iter()
@@ -1291,14 +1323,21 @@ pub fn setting_set(state: State<'_, AppState>, request: SettingRequest) -> Comma
     Ok(())
 }
 
-/// Emits the current index status; called by the workers as jobs finish.
+/// Adds vectors written by the workers to the search index and emits the
+/// current index status; called by the workers as jobs finish.
 pub(crate) fn emit_index_progress(app: &tauri::AppHandle) {
     use tauri::{Emitter, Manager};
 
     let Some(state) = app.try_state::<AppState>() else {
         return;
     };
-    let status = state.library().index_status();
+    let status = {
+        let library = state.library();
+        if let Err(error) = library.sync_vectors() {
+            eprintln!("vector index sync failed: {error}");
+        }
+        library.index_status()
+    };
     match status {
         Ok(status) => {
             let _ = app.emit(IndexProgressChanged::NAME, to_event(&status_view(status)));

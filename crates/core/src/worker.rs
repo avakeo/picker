@@ -9,13 +9,14 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex, PoisonError,
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
 use picker_imaging::ImageFormat;
+use picker_ml::Embedder;
 use picker_store::{JobStatus, Stage, StageStatus, StageTarget};
 
 use crate::library::{Library, LibraryError, Result, IMAGE_STAGE_VERSION};
@@ -33,7 +34,13 @@ pub const IMAGE_STAGES: &[Stage] = &[
 pub const MAX_IMAGE_WORKERS: u32 = 8;
 pub const DEFAULT_IMAGE_WORKERS: u32 = 2;
 
+/// Upper bound for model workers. The embedding model runs one inference at
+/// a time, so more workers mainly overlap file reads and the cheap stages.
+pub const MAX_ML_WORKERS: u32 = 2;
+pub const DEFAULT_ML_WORKERS: u32 = 1;
+
 pub const IMAGE_WORKERS_KEY: &str = "index.image_workers";
+pub const ML_WORKERS_KEY: &str = "index.ml_workers";
 pub const BATTERY_POLICY_KEY: &str = "index.battery_policy";
 
 /// What the workers do while the computer runs on battery.
@@ -73,6 +80,7 @@ impl BatteryPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkerSettings {
     pub image_workers: u32,
+    pub ml_workers: u32,
     pub battery: BatteryPolicy,
 }
 
@@ -80,6 +88,7 @@ impl Default for WorkerSettings {
     fn default() -> Self {
         Self {
             image_workers: DEFAULT_IMAGE_WORKERS,
+            ml_workers: DEFAULT_ML_WORKERS,
             battery: BatteryPolicy::default(),
         }
     }
@@ -89,31 +98,43 @@ impl WorkerSettings {
     /// Number of image workers that should run now.
     #[must_use]
     pub fn active_image_workers(self, on_battery: bool) -> u32 {
-        let configured = self.image_workers.clamp(1, MAX_IMAGE_WORKERS);
-        match (on_battery, self.battery) {
-            (false, _) | (true, BatteryPolicy::Normal) => configured,
-            (true, BatteryPolicy::Reduce) => 1,
-            (true, BatteryPolicy::Pause) => 0,
+        self.battery
+            .limit(self.image_workers.clamp(1, MAX_IMAGE_WORKERS), on_battery)
+    }
+
+    /// Number of model workers that should run now.
+    #[must_use]
+    pub fn active_ml_workers(self, on_battery: bool) -> u32 {
+        self.battery
+            .limit(self.ml_workers.clamp(1, MAX_ML_WORKERS), on_battery)
+    }
+}
+
+impl BatteryPolicy {
+    const fn limit(self, configured: u32, on_battery: bool) -> u32 {
+        match (on_battery, self) {
+            (false, _) | (true, Self::Normal) => configured,
+            (true, Self::Reduce) => 1,
+            (true, Self::Pause) => 0,
         }
     }
 }
 
-pub(crate) fn parse_image_workers(value: &str) -> Result<u32> {
+fn parse_count(key: &str, value: &str, max: u32) -> Result<u32> {
     value
         .parse::<u32>()
         .ok()
-        .filter(|count| (1..=MAX_IMAGE_WORKERS).contains(count))
+        .filter(|count| (1..=max).contains(count))
         .ok_or_else(|| {
-            LibraryError::InvalidInput(format!(
-                "{IMAGE_WORKERS_KEY} must be an integer from 1 to {MAX_IMAGE_WORKERS}"
-            ))
+            LibraryError::InvalidInput(format!("{key} must be an integer from 1 to {max}"))
         })
 }
 
 /// Validates the settings that the workers read. Other keys are accepted as is.
 pub(crate) fn validate_setting(key: &str, value: &str) -> Result<()> {
     match key {
-        IMAGE_WORKERS_KEY => parse_image_workers(value).map(|_| ()),
+        IMAGE_WORKERS_KEY => parse_count(key, value, MAX_IMAGE_WORKERS).map(|_| ()),
+        ML_WORKERS_KEY => parse_count(key, value, MAX_ML_WORKERS).map(|_| ()),
         BATTERY_POLICY_KEY => BatteryPolicy::parse(value).map(|_| ()),
         _ => Ok(()),
     }
@@ -135,7 +156,12 @@ impl Library {
             image_workers: self
                 .get_setting(IMAGE_WORKERS_KEY)?
                 .map_or(Ok(defaults.image_workers), |value| {
-                    parse_image_workers(&value)
+                    parse_count(IMAGE_WORKERS_KEY, &value, MAX_IMAGE_WORKERS)
+                })?,
+            ml_workers: self
+                .get_setting(ML_WORKERS_KEY)?
+                .map_or(Ok(defaults.ml_workers), |value| {
+                    parse_count(ML_WORKERS_KEY, &value, MAX_ML_WORKERS)
                 })?,
             battery: self
                 .get_setting(BATTERY_POLICY_KEY)?
@@ -169,6 +195,10 @@ impl Library {
                     IMAGE_STAGE_VERSION,
                     None,
                 )?;
+                // Model stages wait in the queue until a model is set.
+                self.store()
+                    .jobs()
+                    .enqueue(target, Stage::Embedding, job.priority, 3)?;
                 self.store().jobs().mark_succeeded(job.id)
             }
             Err(error) => {
@@ -286,10 +316,29 @@ impl PoolConfig {
 
 type ProgressCallback = Arc<dyn Fn() + Send + Sync>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Lane {
+    Image,
+    Ml,
+}
+
+impl Lane {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Ml => "model",
+        }
+    }
+}
+
 struct Control {
     stop: AtomicBool,
     active: AtomicU32,
+    active_ml: AtomicU32,
     on_battery: AtomicBool,
+    /// Embedding model handed to the model workers, with a generation that
+    /// changes on every update.
+    embedder: Mutex<(u64, Option<Arc<dyn Embedder>>)>,
     /// Milliseconds since `started` of the last progress notification.
     last_progress: AtomicU64,
     started: Instant,
@@ -314,13 +363,15 @@ impl WorkerPool {
         let control = Arc::new(Control {
             stop: AtomicBool::new(false),
             active: AtomicU32::new(0),
+            active_ml: AtomicU32::new(0),
             on_battery: AtomicBool::new(false),
+            embedder: Mutex::new((0, None)),
             last_progress: AtomicU64::new(0),
             started: Instant::now(),
         });
         refresh_control(&supervisor, power.as_ref(), &control);
 
-        let mut handles = Vec::with_capacity(MAX_IMAGE_WORKERS as usize + 1);
+        let mut handles = Vec::with_capacity((MAX_IMAGE_WORKERS + MAX_ML_WORKERS) as usize + 1);
         {
             let control = Arc::clone(&control);
             let interval = config.control_interval;
@@ -330,12 +381,15 @@ impl WorkerPool {
                 }
             }));
         }
-        for index in 0..MAX_IMAGE_WORKERS {
+        let lanes = (0..MAX_IMAGE_WORKERS)
+            .map(|index| (Lane::Image, index))
+            .chain((0..MAX_ML_WORKERS).map(|index| (Lane::Ml, index)));
+        for (lane, index) in lanes {
             let control = Arc::clone(&control);
             let config = config.clone();
             let on_progress = Arc::clone(&on_progress);
             handles.push(thread::spawn(move || {
-                image_worker(index, &config, &control, &on_progress);
+                run_worker(lane, index, &config, &control, &on_progress);
             }));
         }
         Ok(Self { control, handles })
@@ -344,15 +398,30 @@ impl WorkerPool {
     /// Applies changed settings now instead of at the next periodic read.
     pub fn apply_settings(&self, settings: WorkerSettings) {
         let on_battery = self.control.on_battery.load(Ordering::Relaxed);
-        self.control
-            .active
-            .store(settings.active_image_workers(on_battery), Ordering::Relaxed);
+        apply(&self.control, settings, on_battery);
+    }
+
+    /// Hands a new embedding model to the model workers, or stops model work
+    /// with `None`.
+    pub fn set_embedder(&self, embedder: Option<Arc<dyn Embedder>>) {
+        let mut current = self
+            .control
+            .embedder
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        *current = (current.0 + 1, embedder);
     }
 
     /// Number of image workers allowed to run now.
     #[must_use]
     pub fn active_workers(&self) -> u32 {
         self.control.active.load(Ordering::Relaxed)
+    }
+
+    /// Number of model workers allowed to run now.
+    #[must_use]
+    pub fn active_ml_workers(&self) -> u32 {
+        self.control.active_ml.load(Ordering::Relaxed)
     }
 
     #[must_use]
@@ -386,9 +455,16 @@ fn refresh_control(library: &Library, power: &dyn PowerSource, control: &Control
     });
     let on_battery = power.on_battery();
     control.on_battery.store(on_battery, Ordering::Relaxed);
+    apply(control, settings, on_battery);
+}
+
+fn apply(control: &Control, settings: WorkerSettings, on_battery: bool) {
     control
         .active
         .store(settings.active_image_workers(on_battery), Ordering::Relaxed);
+    control
+        .active_ml
+        .store(settings.active_ml_workers(on_battery), Ordering::Relaxed);
 }
 
 /// Sleeps in short steps so that a stop request is seen quickly. Returns
@@ -406,13 +482,20 @@ fn wait_or_stop(control: &Control, duration: Duration) -> bool {
     false
 }
 
-fn image_worker(
+fn run_worker(
+    lane: Lane,
     index: u32,
     config: &PoolConfig,
     control: &Control,
     on_progress: &ProgressCallback,
 ) {
-    let mut library = None;
+    let active = match lane {
+        Lane::Image => &control.active,
+        Lane::Ml => &control.active_ml,
+    };
+    let mut library: Option<Library> = None;
+    // Generation of the embedder this worker's library holds.
+    let mut embedder_generation = 0;
     // Set after a job runs, so the last jobs of a batch are always reported
     // even when they finish inside the throttling interval.
     let mut unreported = false;
@@ -420,7 +503,7 @@ fn image_worker(
         if control.stop.load(Ordering::Relaxed) {
             return;
         }
-        if index >= control.active.load(Ordering::Relaxed) {
+        if index >= active.load(Ordering::Relaxed) {
             if !wait_or_stop(control, config.idle_wait) {
                 return;
             }
@@ -430,7 +513,10 @@ fn image_worker(
             match Library::open(&config.database, &config.cache_root) {
                 Ok(opened) => library = Some(opened),
                 Err(error) => {
-                    eprintln!("image worker {index} could not open the library: {error}");
+                    eprintln!(
+                        "{} worker {index} could not open the library: {error}",
+                        lane.name()
+                    );
                     if !wait_or_stop(control, config.idle_wait) {
                         return;
                     }
@@ -441,7 +527,22 @@ fn image_worker(
         let Some(worker_library) = library.as_ref() else {
             continue;
         };
-        match worker_library.run_next_image_job() {
+        if lane == Lane::Ml {
+            let current = control
+                .embedder
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            if current.0 != embedder_generation {
+                worker_library.set_worker_embedder(current.1);
+                embedder_generation = current.0;
+            }
+        }
+        let next = match lane {
+            Lane::Image => worker_library.run_next_image_job(),
+            Lane::Ml => worker_library.run_next_ml_job(),
+        };
+        match next {
             Ok(Some(_)) => {
                 unreported = !notify_progress(control, config.progress_interval, on_progress);
             }
@@ -454,7 +555,7 @@ fn image_worker(
                 }
             }
             Err(error) => {
-                eprintln!("image worker {index} failed: {error}");
+                eprintln!("{} worker {index} failed: {error}", lane.name());
                 if !wait_or_stop(control, config.idle_wait) {
                     return;
                 }

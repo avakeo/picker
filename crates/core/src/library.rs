@@ -24,6 +24,8 @@ use crate::portable::{PortableAlbum, PortableColors, PortableFeedback, PortableR
 
 /// Version recorded for the image stages (metadata, thumbnail, phash, color).
 pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v1";
+/// Version recorded for the zero-shot auto-tag stage.
+pub(crate) const AUTO_TAG_STAGE_VERSION: &str = "zero-shot-v1";
 
 /// Portable representation of the non-regenerable tag data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -260,6 +262,8 @@ struct VectorState {
     model_id: String,
     model_version: String,
     index: BruteForceIndex,
+    /// Unix seconds of the last [`Library::sync_vectors`] read.
+    synced_at: i64,
 }
 
 struct TaggerState {
@@ -791,6 +795,8 @@ impl Library {
         if let Some(embedder) = &embedder {
             let model_id = embedder.model_id().to_owned();
             let model_version = embedder.model_version().to_owned();
+            // Read before loading, so vectors written meanwhile are synced later.
+            let loaded_at = unix_now();
             let stored = self
                 .store
                 .embeddings()
@@ -815,6 +821,7 @@ impl Library {
                 model_id,
                 model_version,
                 index,
+                synced_at: loaded_at,
             });
             *self
                 .embedder
@@ -831,6 +838,54 @@ impl Library {
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         }
         Ok(())
+    }
+
+    /// The embedding model in use, if any.
+    #[must_use]
+    pub fn current_embedder(&self) -> Option<Arc<dyn Embedder>> {
+        self.embedder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Sets the embedder of a worker library. Unlike [`Library::set_embedder`]
+    /// it does not load the vector index, which workers never search.
+    pub(crate) fn set_worker_embedder(&self, embedder: Option<Arc<dyn Embedder>>) {
+        *self
+            .embedder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = embedder;
+        *self
+            .tagger
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+
+    /// Adds embeddings written by the workers to the in-memory index.
+    /// Returns the number of vectors read.
+    pub fn sync_vectors(&self) -> Result<usize> {
+        let mut vectors = self
+            .vectors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(state) = vectors.as_mut() else {
+            return Ok(0);
+        };
+        let now = unix_now();
+        let updated = self.store.embeddings().list_updated_since(
+            &state.model_id,
+            &state.model_version,
+            state.synced_at,
+        )?;
+        for embedding in &updated {
+            state
+                .index
+                .upsert(embedding.asset_id, &embedding.vector)
+                .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
+        }
+        state.synced_at = now;
+        Ok(updated.len())
     }
 
     /// Empties the in-memory vector index while keeping the model.
@@ -955,7 +1010,6 @@ impl Library {
     /// Embeds text and returns nearest assets with cosine scores.
     /// Adds `zero_shot` suggestions for assets that still need auto-tagging.
     pub fn auto_tag(&self, limit: u32) -> Result<usize> {
-        const STAGE_VERSION: &str = "zero-shot-v1";
         let state = self.ensure_tagger()?;
         let Some(state) = state else {
             return Err(LibraryError::InvalidInput(
@@ -965,57 +1019,71 @@ impl Library {
         let asset_ids = self.store.embeddings().missing_auto_tag(
             &state.model_id,
             &state.model_version,
-            STAGE_VERSION,
+            AUTO_TAG_STAGE_VERSION,
             limit.clamp(1, 500),
         )?;
         let mut suggested = 0;
         for asset_id in asset_ids {
-            let embedding =
-                self.store
-                    .embeddings()
-                    .get(asset_id, &state.model_id, &state.model_version)?;
-            let Some(embedding) = embedding else {
-                continue;
-            };
-            match state.tagger.suggest(&embedding.vector) {
-                Ok(suggestions) => {
-                    let mapped: Vec<(i64, f64)> = suggestions
-                        .into_iter()
-                        .filter_map(|suggestion| {
-                            state
-                                .tag_ids
-                                .get(&suggestion.tag_id)
-                                .map(|tag_id| (*tag_id, suggestion.confidence))
-                        })
-                        .collect();
-                    self.store.tag_assignments().replace_suggestions(
-                        asset_id,
-                        picker_store::AssignmentSource::ZeroShot,
-                        &state.model_id,
-                        &state.model_version,
-                        &mapped,
-                    )?;
-                    suggested += mapped.len();
-                    self.store.stage_states().upsert(
-                        StageTarget::Asset(asset_id),
-                        Stage::AutoTag,
-                        StageStatus::Succeeded,
-                        STAGE_VERSION,
-                        None,
-                    )?;
-                }
-                Err(error) => {
-                    self.store.stage_states().upsert(
-                        StageTarget::Asset(asset_id),
-                        Stage::AutoTag,
-                        StageStatus::Failed,
-                        STAGE_VERSION,
-                        Some(&error.to_string()),
-                    )?;
-                }
-            }
+            suggested += self.auto_tag_with(&state, asset_id)?;
         }
         Ok(suggested)
+    }
+
+    /// Adds `zero_shot` suggestions for one asset. Returns the number of
+    /// suggestions, or zero when the asset has no embedding yet.
+    pub(crate) fn auto_tag_asset(&self, asset_id: i64) -> Result<usize> {
+        let state = self
+            .ensure_tagger()?
+            .ok_or_else(|| LibraryError::InvalidInput("埋め込みモデルが未設定です。".to_owned()))?;
+        self.auto_tag_with(&state, asset_id)
+    }
+
+    fn auto_tag_with(&self, state: &TaggerState, asset_id: i64) -> Result<usize> {
+        let embedding =
+            self.store
+                .embeddings()
+                .get(asset_id, &state.model_id, &state.model_version)?;
+        let Some(embedding) = embedding else {
+            return Ok(0);
+        };
+        match state.tagger.suggest(&embedding.vector) {
+            Ok(suggestions) => {
+                let mapped: Vec<(i64, f64)> = suggestions
+                    .into_iter()
+                    .filter_map(|suggestion| {
+                        state
+                            .tag_ids
+                            .get(&suggestion.tag_id)
+                            .map(|tag_id| (*tag_id, suggestion.confidence))
+                    })
+                    .collect();
+                self.store.tag_assignments().replace_suggestions(
+                    asset_id,
+                    picker_store::AssignmentSource::ZeroShot,
+                    &state.model_id,
+                    &state.model_version,
+                    &mapped,
+                )?;
+                self.store.stage_states().upsert(
+                    StageTarget::Asset(asset_id),
+                    Stage::AutoTag,
+                    StageStatus::Succeeded,
+                    AUTO_TAG_STAGE_VERSION,
+                    None,
+                )?;
+                Ok(mapped.len())
+            }
+            Err(error) => {
+                self.store.stage_states().upsert(
+                    StageTarget::Asset(asset_id),
+                    Stage::AutoTag,
+                    StageStatus::Failed,
+                    AUTO_TAG_STAGE_VERSION,
+                    Some(&error.to_string()),
+                )?;
+                Ok(0)
+            }
+        }
     }
 
     fn ensure_tagger(&self) -> Result<Option<Arc<TaggerState>>> {
@@ -1762,4 +1830,12 @@ fn preferred_status(locations: &[Location]) -> LocationStatus {
     } else {
         LocationStatus::Missing
     }
+}
+
+pub(crate) fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| i64::try_from(elapsed.as_secs()).ok())
+        .unwrap_or(0)
 }

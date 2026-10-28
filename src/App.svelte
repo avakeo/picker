@@ -109,6 +109,7 @@
   let xmpEnabled = false;
   let reviewRatio = 0.5;
   let imageWorkers = "2";
+  let mlWorkers = "1";
   let batteryPolicy = "reduce";
   const workerCounts = ["1", "2", "3", "4", "5", "6", "7", "8"];
   const batteryPolicies: [string, string][] = [
@@ -209,6 +210,7 @@
     xmpEnabled = (await getSetting("xmp.enabled")) === "true";
     reviewRatio = Number((await getSetting("review.high_ratio")) ?? "0.5");
     imageWorkers = (await getSetting("index.image_workers")) ?? "2";
+    mlWorkers = (await getSetting("index.ml_workers")) ?? "1";
     batteryPolicy = (await getSetting("index.battery_policy")) ?? "reduce";
   }
 
@@ -1028,7 +1030,14 @@
         </select>
       </label>
       <label class="check">
-        バッテリー駆動中の画像処理
+        AI 処理（埋め込み・自動タグ）の並列数
+        <select value={mlWorkers} onchange={(event) => void changeWorkerSetting("index.ml_workers", event.currentTarget.value)}>
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+      </label>
+      <label class="check">
+        バッテリー駆動中のバックグラウンド処理
         <select value={batteryPolicy} onchange={(event) => void changeWorkerSetting("index.battery_policy", event.currentTarget.value)}>
           {#each batteryPolicies as [value, label] (value)}
             <option {value}>{label}</option>

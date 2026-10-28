@@ -58,12 +58,13 @@ fn scans_roots_and_pages_assets() {
     let status = library.index_status().expect("status");
     assert_eq!(status.total_assets, 2);
     assert_eq!(status.stages.len(), Stage::ordered().len());
-    // scan_root finishes the queued work, so nothing is left to reorder.
+    // scan_root finishes the image work; only the embedding job, which
+    // waits for a model, is left to reorder.
     assert_eq!(
         library
             .prioritize_viewport(&[duplicates[0].id])
             .expect("priority"),
-        0
+        1
     );
 }
 

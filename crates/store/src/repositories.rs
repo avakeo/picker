@@ -652,6 +652,29 @@ impl<'connection> JobRepository<'connection> {
         }
     }
 
+    /// Queues an embedding job for every asset that has a present file, no
+    /// embedding for the model, and no embedding job waiting. Returns the
+    /// number of jobs added.
+    pub fn enqueue_missing_embeddings(&self, model_id: &str, model_version: &str) -> Result<usize> {
+        validate_nonempty("model_id", model_id)?;
+        validate_nonempty("model_version", model_version)?;
+        Ok(self.connection.execute(
+            "INSERT INTO jobs (asset_id, stage, priority, max_attempts)
+             SELECT a.id, 'embedding', 0, 3 FROM assets a
+             WHERE EXISTS (
+                     SELECT 1 FROM locations l
+                     WHERE l.asset_id = a.id AND l.status = 'present')
+               AND NOT EXISTS (
+                     SELECT 1 FROM embeddings e
+                     WHERE e.asset_id = a.id AND e.model_id = ?1 AND e.model_version = ?2)
+               AND NOT EXISTS (
+                     SELECT 1 FROM jobs j
+                     WHERE j.asset_id = a.id AND j.stage = 'embedding'
+                       AND j.status IN ('pending', 'paused'))",
+            params![model_id, model_version],
+        )?)
+    }
+
     /// Claims the highest-priority pending job of any of `stages`.
     ///
     /// Selection and claim run in one statement, so workers on separate

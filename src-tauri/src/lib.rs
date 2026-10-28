@@ -162,12 +162,9 @@ pub fn run() {
             fs::create_dir_all(&data_dir)?;
             let database = commands::default_database(&data_dir);
             let cache = commands::default_cache(&data_dir);
-            let mut library = picker_core::Library::open(&database, &cache)?;
+            let library = picker_core::Library::open(&database, &cache)?;
             thumbnail_protocol::set_cache_root(library.cache_root().to_path_buf());
             let models = picker_ml::ModelRegistry::open(data_dir.join("models"));
-            if let Err(error) = commands::configure_embedder(&mut library, &models) {
-                eprintln!("embedding model unavailable: {error}");
-            }
             // Keep one daily database snapshot for a week (design 6.3).
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -191,6 +188,10 @@ pub fn run() {
             ) {
                 Ok(pool) => app.state::<commands::AppState>().set_workers(pool),
                 Err(error) => eprintln!("background workers unavailable: {error}"),
+            }
+            // Loaded after the workers start, so they receive the model too.
+            if let Err(error) = app.state::<commands::AppState>().reload_embedder() {
+                eprintln!("embedding model unavailable: {error}");
             }
             let _core = create_core();
             Ok(())
@@ -225,6 +226,17 @@ mod tests {
             commands::default_cache(data),
             std::path::PathBuf::from("/tmp/picker/thumbnails")
         );
+    }
+
+    #[test]
+    fn reloading_without_an_installed_model_clears_the_embedder() {
+        let data = tempfile::tempdir().expect("data");
+        let library =
+            picker_core::Library::open_in_memory(data.path().join("cache")).expect("library");
+        let models = picker_ml::ModelRegistry::open(data.path().join("models"));
+        let state = commands::AppState::new(library, models);
+        state.reload_embedder().expect("reload");
+        assert!(state.model_list().iter().all(|model| !model.active));
     }
 
     #[test]

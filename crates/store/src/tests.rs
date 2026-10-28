@@ -565,3 +565,36 @@ fn clearing_a_stage_keeps_other_stages() -> Result<()> {
         .is_some());
     Ok(())
 }
+
+#[test]
+fn missing_embeddings_are_queued_once_for_present_assets() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let root = store.roots().insert(&root("/photos", "写真"))?;
+    let mut assets = Vec::new();
+    for (byte, status) in [
+        (1, LocationStatus::Present),
+        (2, LocationStatus::Present),
+        (3, LocationStatus::Missing),
+    ] {
+        let asset = store.assets().insert(&asset(byte))?;
+        let relative_path = format!("{byte}.png");
+        store.locations().insert(&NewLocation {
+            asset_id: asset.id,
+            root_id: root.id,
+            relative_path: &relative_path,
+            modified_at: 0,
+            status,
+        })?;
+        assets.push(asset.id);
+    }
+    store
+        .embeddings()
+        .upsert(assets[1], "clip", "v1", &[1.0, 0.0])?;
+
+    assert_eq!(store.jobs().enqueue_missing_embeddings("clip", "v1")?, 1);
+    assert_eq!(store.jobs().enqueue_missing_embeddings("clip", "v1")?, 0);
+    let job = store.jobs().dequeue(Some(Stage::Embedding))?.expect("job");
+    assert_eq!(job.target, StageTarget::Asset(assets[0]));
+    assert!(store.jobs().enqueue_missing_embeddings("", "v1").is_err());
+    Ok(())
+}
