@@ -15,7 +15,7 @@ sha2 = "0.10"
 ureq = { version = "2", features = ["tls"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ort = { version = "=2.0.0-rc.15", features = ["download-binaries", "copy-dylibs"] }
+ort = { version = "=2.0.0-rc.15", features = ["download-binaries", "copy-dylibs", "coreml"] }
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "ndarray", "tracing", "load-dynamic", "copy-dylibs"] }

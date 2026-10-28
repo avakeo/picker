@@ -238,11 +238,13 @@ fn load_session(path: &Path) -> Result<Session, EmbeddingError> {
     let env = environment()?;
     #[cfg(target_os = "macos")]
     {
+        // Core ML が使えない環境では CPU 実行へ切り替えるため、失敗は捨てる
         let coreml = [ort::ep::CoreML::default().build()];
-        if let Ok(session) = Session::builder(&env)
-            .and_then(|builder| builder.with_execution_providers(coreml))
-            .and_then(|mut builder| builder.commit_from_file(path))
-        {
+        let session = Session::builder(&env)
+            .ok()
+            .and_then(|builder| builder.with_execution_providers(coreml).ok())
+            .and_then(|mut builder| builder.commit_from_file(path).ok());
+        if let Some(session) = session {
             return Ok(session);
         }
     }
