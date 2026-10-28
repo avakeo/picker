@@ -8,10 +8,13 @@ mod library;
 mod ml_jobs;
 mod palette;
 mod portable;
+mod watch;
 mod worker;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod watch_tests;
 #[cfg(test)]
 mod worker_tests;
 
@@ -24,6 +27,7 @@ pub use library::{
 pub use ml_jobs::ML_STAGES;
 pub use palette::{ColorCondition, ColorScope, Palette, PaletteColor};
 pub use portable::{PortableAlbum, PortableColor, PortableColors, PortableFeedback, PortableRoot};
+pub use watch::{WatchConfig, WatchService};
 pub use worker::{
     parse_pmset, BatteryPolicy, JobRun, PoolConfig, PowerSource, SystemPower, WorkerPool,
     WorkerSettings, BATTERY_POLICY_KEY, DEFAULT_IMAGE_WORKERS, DEFAULT_ML_WORKERS, IMAGE_STAGES,
