@@ -33,6 +33,7 @@ use crate::contract::{
 pub struct AppState {
     library: Mutex<Library>,
     models: Arc<ModelRegistry>,
+    workers: Mutex<Option<picker_core::WorkerPool>>,
 }
 
 impl AppState {
@@ -47,6 +48,26 @@ impl AppState {
         Self {
             library: Mutex::new(library),
             models: Arc::new(models),
+            workers: Mutex::new(None),
+        }
+    }
+
+    /// Keeps the background workers alive for the lifetime of the app.
+    pub fn set_workers(&self, pool: picker_core::WorkerPool) {
+        *self
+            .workers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(pool);
+    }
+
+    fn apply_worker_settings(&self, settings: picker_core::WorkerSettings) {
+        if let Some(pool) = self
+            .workers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            pool.apply_settings(settings);
         }
     }
 
@@ -306,7 +327,8 @@ pub fn rescan_root(
 
     let id = parse_id(&request.id)?;
     let library = state.library();
-    library.scan_root(id).map_err(error)?;
+    // The background workers process the queued images.
+    library.sync_root(id).map_err(error)?;
     let status = status_view(library.index_status().map_err(error)?);
     let _ = app.emit(IndexProgressChanged::NAME, to_event(&status));
     Ok(status)
@@ -1258,10 +1280,31 @@ pub fn setting_get(
 
 #[tauri::command]
 pub fn setting_set(state: State<'_, AppState>, request: SettingRequest) -> CommandResult<()> {
-    state
-        .library()
-        .set_setting(&request.key, &request.value)
-        .map_err(error)
+    let settings = {
+        let library = state.library();
+        library
+            .set_setting(&request.key, &request.value)
+            .map_err(error)?;
+        library.worker_settings().map_err(error)?
+    };
+    state.apply_worker_settings(settings);
+    Ok(())
+}
+
+/// Emits the current index status; called by the workers as jobs finish.
+pub(crate) fn emit_index_progress(app: &tauri::AppHandle) {
+    use tauri::{Emitter, Manager};
+
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let status = state.library().index_status();
+    match status {
+        Ok(status) => {
+            let _ = app.emit(IndexProgressChanged::NAME, to_event(&status_view(status)));
+        }
+        Err(error) => eprintln!("index status unavailable: {error}"),
+    }
 }
 
 #[tauri::command]

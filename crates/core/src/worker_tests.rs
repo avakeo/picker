@@ -282,6 +282,11 @@ fn pool_processes_the_queue_in_parallel_and_reports_progress() {
     )
     .expect("pool");
     assert_eq!(pool.active_workers(), 3);
+    pool.apply_settings(WorkerSettings {
+        image_workers: 5,
+        battery: BatteryPolicy::Pause,
+    });
+    assert_eq!(pool.active_workers(), 5);
     assert!(wait_until(Duration::from_secs(20), || fixture.processed() == 12));
     assert!(wait_until(Duration::from_secs(5), || calls
         .load(Ordering::Relaxed)

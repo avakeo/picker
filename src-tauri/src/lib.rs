@@ -182,6 +182,15 @@ pub fn run() {
                 eprintln!("default albums unavailable: {error}");
             }
             app.manage(commands::AppState::new(library, models));
+            let handle = app.handle().clone();
+            match picker_core::WorkerPool::start(
+                picker_core::PoolConfig::new(&database, &cache),
+                std::sync::Arc::new(picker_core::SystemPower),
+                std::sync::Arc::new(move || commands::emit_index_progress(&handle)),
+            ) {
+                Ok(pool) => app.state::<commands::AppState>().set_workers(pool),
+                Err(error) => eprintln!("background workers unavailable: {error}"),
+            }
             let _core = create_core();
             Ok(())
         })

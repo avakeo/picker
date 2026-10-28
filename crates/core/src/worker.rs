@@ -341,6 +341,14 @@ impl WorkerPool {
         Ok(Self { control, handles })
     }
 
+    /// Applies changed settings now instead of at the next periodic read.
+    pub fn apply_settings(&self, settings: WorkerSettings) {
+        let on_battery = self.control.on_battery.load(Ordering::Relaxed);
+        self.control
+            .active
+            .store(settings.active_image_workers(on_battery), Ordering::Relaxed);
+    }
+
     /// Number of image workers allowed to run now.
     #[must_use]
     pub fn active_workers(&self) -> u32 {

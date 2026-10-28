@@ -107,6 +107,14 @@
   let portablePath = "";
   let xmpEnabled = false;
   let reviewRatio = 0.5;
+  let imageWorkers = "2";
+  let batteryPolicy = "reduce";
+  const workerCounts = ["1", "2", "3", "4", "5", "6", "7", "8"];
+  const batteryPolicies: [string, string][] = [
+    ["normal", "そのまま続ける"],
+    ["reduce", "1つに減らす"],
+    ["pause", "止める"],
+  ];
   let modelProgress: ModelProgressEvent | null = null;
   let installingModel = "";
   let currentAlbumId = "";
@@ -199,6 +207,13 @@
   async function refreshSettings() {
     xmpEnabled = (await getSetting("xmp.enabled")) === "true";
     reviewRatio = Number((await getSetting("review.high_ratio")) ?? "0.5");
+    imageWorkers = (await getSetting("index.image_workers")) ?? "2";
+    batteryPolicy = (await getSetting("index.battery_policy")) ?? "reduce";
+  }
+
+  async function changeWorkerSetting(key: string, value: string) {
+    await guard(async () => setSetting(key, value));
+    await refreshSettings();
   }
 
   async function toggleXmp(enabled: boolean) {
@@ -352,6 +367,33 @@
 
   async function refreshStatus() {
     status = await indexStatus();
+  }
+
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Workers finish thumbnails in the background; reload the items already
+  // shown, keeping the scroll position, so new thumbnails appear.
+  function scheduleThumbnailReload() {
+    if (reloadTimer || !assets.some((asset) => asset.thumbnailState !== "ready")) return;
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      void guard(reloadLoadedAssets);
+    }, 1500);
+  }
+
+  async function reloadLoadedAssets() {
+    const wanted = assets.length;
+    let items: AssetSummaryView[] = [];
+    let cursor: string | null = null;
+    let page: AssetPageView;
+    do {
+      page = await fetchPage(cursor);
+      items = [...items, ...page.items];
+      cursor = page.nextCursor;
+    } while (cursor && items.length < wanted);
+    assets = items;
+    nextCursor = cursor;
+    total = page.total;
   }
 
   async function refreshAll() {
@@ -862,12 +904,14 @@
     void refreshAll();
     const unlisten = listen("index-progress-changed", () => {
       void refreshStatus();
+      scheduleThumbnailReload();
     });
     const unlistenModel = listen<ModelProgressEvent>("model-progress", (event) => {
       modelProgress = event.payload;
     });
     return () => {
       if (priorityTimer) clearTimeout(priorityTimer);
+      if (reloadTimer) clearTimeout(reloadTimer);
       void unlisten.then((stop) => stop());
       void unlistenModel.then((stop) => stop());
     };
@@ -963,6 +1007,22 @@
           value={reviewRatio}
           onchange={(event) => void changeReviewRatio(Number(event.currentTarget.value))}
         />
+      </label>
+      <label class="check">
+        画像処理の並列数
+        <select value={imageWorkers} onchange={(event) => void changeWorkerSetting("index.image_workers", event.currentTarget.value)}>
+          {#each workerCounts as count (count)}
+            <option value={count}>{count}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="check">
+        バッテリー駆動中の画像処理
+        <select value={batteryPolicy} onchange={(event) => void changeWorkerSetting("index.battery_policy", event.currentTarget.value)}>
+          {#each batteryPolicies as [value, label] (value)}
+            <option {value}>{label}</option>
+          {/each}
+        </select>
       </label>
       <details class="about">
         <summary>このアプリについて</summary>

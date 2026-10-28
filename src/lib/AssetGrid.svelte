@@ -73,7 +73,11 @@
           onContextMenu(asset);
         }}
       >
-        <img src={thumbnail(asset.id)} alt="" loading="lazy" />
+        {#if asset.thumbnailState === "ready"}
+          <img src={thumbnail(asset.id)} alt="" loading="lazy" />
+        {:else}
+          <span class="pending">処理待ち</span>
+        {/if}
         {#if asset.locationStatus !== "present"}
           <span class="badge">{asset.locationStatus}</span>
         {/if}
@@ -98,6 +102,7 @@
   .grid-tile:hover, .grid-tile:focus-visible { border-color: #78a9ff; outline: none; }
   .grid-tile.selected { border-color: #5b9dff; }
   .grid-tile img { display: block; width: 100%; height: 100%; border-radius: 3px; object-fit: cover; background: #303030; }
+  .pending { color: #888; font-size: 12px; }
   .badge {
     position: absolute;
     right: 6px;
