@@ -25,6 +25,8 @@ impl<'connection> PortableRepository<'connection> {
         Self { connection }
     }
 
+    /// Returns confirmed and rejected assignments, including staged ones
+    /// whose asset has not been scanned yet, so a re-export keeps them.
     pub fn decided_assignments(&self) -> Result<Vec<PortableAssignment>> {
         let mut statement = self.connection.prepare(
             "SELECT assets.blake3_hash, tags.namespace, tags.canonical_name,
@@ -34,7 +36,20 @@ impl<'connection> PortableRepository<'connection> {
              JOIN assets ON assets.id = assignments.asset_id
              JOIN tags ON tags.id = assignments.tag_id
              WHERE assignments.state IN ('confirmed', 'rejected')
-             ORDER BY assets.blake3_hash, tags.namespace, tags.canonical_name",
+             UNION ALL
+             SELECT pending.blake3_hash, tags.namespace, tags.canonical_name,
+                    pending.state, pending.source, pending.confidence,
+                    pending.model_id, pending.model_version
+             FROM pending_tag_assignments pending
+             JOIN tags ON tags.id = pending.tag_id
+             WHERE pending.state IN ('confirmed', 'rejected')
+               AND NOT EXISTS (
+                   SELECT 1 FROM tag_assignments assigned
+                   JOIN assets ON assets.id = assigned.asset_id
+                   WHERE assets.blake3_hash = pending.blake3_hash
+                     AND assigned.tag_id = pending.tag_id
+               )
+             ORDER BY 1, 2, 3",
         )?;
         let rows = statement.query_map([], |row| {
             let state: String = row.get(3)?;

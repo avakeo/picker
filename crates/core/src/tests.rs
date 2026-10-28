@@ -739,6 +739,51 @@ fn portable_export_restores_tags_after_rescan() {
 }
 
 #[test]
+fn portable_reexport_keeps_decisions_waiting_for_assets() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(60)).expect("write");
+    let export_dir = tempfile::tempdir().expect("export");
+    let first_export = export_dir.path().join("first.json");
+    let second_export = export_dir.path().join("second.json");
+    let source = Library::open_in_memory(cache.path()).expect("library");
+    let root = source.add_root(media.path(), "root").expect("root");
+    source.scan_root(root.id).expect("scan");
+    let confirmed = asset_id_named(&source, "one.png");
+    let rejected = asset_id_named(&source, "two.png");
+    let tag = source.create_tag("beach", "海辺", None, None).expect("tag");
+    source
+        .set_tag_on_assets(&[confirmed], tag.id, picker_store::TagState::Confirmed)
+        .expect("confirm");
+    source
+        .set_tag_on_assets(&[rejected], tag.id, picker_store::TagState::Rejected)
+        .expect("reject");
+    source.export_portable(&first_export).expect("export");
+
+    // Re-export from the imported library before any image is scanned.
+    let cache2 = tempfile::tempdir().expect("cache2");
+    let restored = Library::open_in_memory(cache2.path()).expect("library2");
+    restored.import_portable(&first_export).expect("import");
+    assert_eq!(
+        restored
+            .store()
+            .portable()
+            .pending_count()
+            .expect("pending"),
+        2
+    );
+    restored.export_portable(&second_export).expect("re-export");
+
+    let first: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&first_export).expect("read")).expect("json");
+    let second: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&second_export).expect("read")).expect("json");
+    assert_eq!(first["assignments"], second["assignments"]);
+    assert_eq!(second["assignments"].as_array().expect("array").len(), 2);
+}
+
+#[test]
 fn xmp_export_writes_only_when_enabled_and_preserves_existing_fields() {
     let media = tempfile::tempdir().expect("media");
     let cache = tempfile::tempdir().expect("cache");
