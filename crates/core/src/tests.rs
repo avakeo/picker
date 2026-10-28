@@ -783,6 +783,129 @@ fn portable_reexport_keeps_decisions_waiting_for_assets() {
     assert_eq!(second["assignments"].as_array().expect("array").len(), 2);
 }
 
+fn suggest(library: &Library, asset_id: i64, tag_id: i64) {
+    library
+        .store()
+        .tag_assignments()
+        .upsert_suggested(
+            asset_id,
+            tag_id,
+            picker_store::AssignmentSource::ZeroShot,
+            0.5,
+            "clip",
+            "v1",
+        )
+        .expect("suggest");
+}
+
+fn assigned_state(library: &Library, asset_id: i64, tag_id: i64) -> picker_store::TagState {
+    library
+        .store()
+        .tag_assignments()
+        .get(asset_id, tag_id)
+        .expect("assignment")
+        .state
+}
+
+#[test]
+fn portable_import_replaces_suggestions_but_keeps_existing_decisions() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(60)).expect("write");
+    let export_dir = tempfile::tempdir().expect("export");
+    let export_path = export_dir.path().join("decisions.json");
+    let source = Library::open_in_memory(cache.path()).expect("library");
+    let root = source.add_root(media.path(), "root").expect("root");
+    source.scan_root(root.id).expect("scan");
+    let tag = source.create_tag("beach", "海辺", None, None).expect("tag");
+    for name in ["one.png", "two.png"] {
+        let asset_id = asset_id_named(&source, name);
+        source
+            .set_tag_on_assets(&[asset_id], tag.id, picker_store::TagState::Rejected)
+            .expect("reject");
+    }
+    source.export_portable(&export_path).expect("export");
+
+    let cache2 = tempfile::tempdir().expect("cache2");
+    let restored = Library::open_in_memory(cache2.path()).expect("library2");
+    let root = restored.add_root(media.path(), "root").expect("root");
+    restored.scan_root(root.id).expect("scan");
+    let tag = restored
+        .create_tag("beach", "海辺", None, None)
+        .expect("tag");
+    let suggested = asset_id_named(&restored, "one.png");
+    let confirmed = asset_id_named(&restored, "two.png");
+    suggest(&restored, suggested, tag.id);
+    restored
+        .set_tag_on_assets(&[confirmed], tag.id, picker_store::TagState::Confirmed)
+        .expect("confirm");
+
+    restored.import_portable(&export_path).expect("import");
+
+    assert_eq!(
+        assigned_state(&restored, suggested, tag.id),
+        picker_store::TagState::Rejected
+    );
+    assert_eq!(
+        assigned_state(&restored, confirmed, tag.id),
+        picker_store::TagState::Confirmed
+    );
+    assert_eq!(
+        restored
+            .store()
+            .portable()
+            .pending_count()
+            .expect("pending"),
+        0
+    );
+}
+
+#[test]
+fn rescan_applies_staged_decision_over_suggestion() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let asset_id = asset_id_named(&library, "one.png");
+    let tag = library
+        .create_tag("beach", "海辺", None, None)
+        .expect("tag");
+    suggest(&library, asset_id, tag.id);
+    let hash = library
+        .store()
+        .assets()
+        .get(asset_id)
+        .expect("asset")
+        .blake3_hash;
+    library
+        .store()
+        .portable()
+        .stage_assignment(
+            &hash,
+            tag.id,
+            picker_store::TagState::Confirmed,
+            picker_store::AssignmentSource::User,
+            None,
+            None,
+            None,
+        )
+        .expect("stage");
+
+    library.scan_root(root.id).expect("rescan");
+
+    assert_eq!(
+        assigned_state(&library, asset_id, tag.id),
+        picker_store::TagState::Confirmed
+    );
+    assert_eq!(
+        library.store().portable().pending_count().expect("pending"),
+        0
+    );
+}
+
 #[test]
 fn xmp_export_writes_only_when_enabled_and_preserves_existing_fields() {
     let media = tempfile::tempdir().expect("media");

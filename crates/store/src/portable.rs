@@ -110,6 +110,9 @@ impl<'connection> PortableRepository<'connection> {
     }
 
     /// Applies pending assignments for one asset and removes them.
+    ///
+    /// An imported decision replaces a machine suggestion, but never an
+    /// existing confirmation or rejection.
     pub fn apply_for_asset(&self, asset_id: i64, blake3_hash: &[u8]) -> Result<usize> {
         let transaction = self.connection.unchecked_transaction()?;
         let changed = transaction.execute(
@@ -117,7 +120,15 @@ impl<'connection> PortableRepository<'connection> {
                 (asset_id, tag_id, state, source, confidence, model_id, model_version)
              SELECT ?1, tag_id, state, source, confidence, model_id, model_version
              FROM pending_tag_assignments WHERE blake3_hash = ?2
-             ON CONFLICT (asset_id, tag_id) DO NOTHING",
+             ON CONFLICT (asset_id, tag_id) DO UPDATE SET
+                 state = excluded.state,
+                 source = excluded.source,
+                 confidence = excluded.confidence,
+                 model_id = excluded.model_id,
+                 model_version = excluded.model_version,
+                 updated_at = unixepoch()
+             WHERE tag_assignments.state = 'suggested'
+               AND excluded.state IN ('confirmed', 'rejected')",
             params![asset_id, blake3_hash],
         )?;
         transaction.execute(
@@ -128,7 +139,8 @@ impl<'connection> PortableRepository<'connection> {
         Ok(changed)
     }
 
-    /// Applies every pending assignment whose asset already exists.
+    /// Applies every pending assignment whose asset already exists, with the
+    /// same precedence as [`Self::apply_for_asset`].
     pub fn apply_all(&self) -> Result<usize> {
         let transaction = self.connection.unchecked_transaction()?;
         let changed = transaction.execute(
@@ -138,7 +150,16 @@ impl<'connection> PortableRepository<'connection> {
                     pending.confidence, pending.model_id, pending.model_version
              FROM pending_tag_assignments pending
              JOIN assets ON assets.blake3_hash = pending.blake3_hash
-             ON CONFLICT (asset_id, tag_id) DO NOTHING",
+             WHERE true
+             ON CONFLICT (asset_id, tag_id) DO UPDATE SET
+                 state = excluded.state,
+                 source = excluded.source,
+                 confidence = excluded.confidence,
+                 model_id = excluded.model_id,
+                 model_version = excluded.model_version,
+                 updated_at = unixepoch()
+             WHERE tag_assignments.state = 'suggested'
+               AND excluded.state IN ('confirmed', 'rejected')",
             [],
         )?;
         transaction.execute(
