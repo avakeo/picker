@@ -598,3 +598,84 @@ fn missing_embeddings_are_queued_once_for_present_assets() -> Result<()> {
     assert!(store.jobs().enqueue_missing_embeddings("", "v1").is_err());
     Ok(())
 }
+
+#[test]
+fn missing_marks_handle_more_paths_than_sqlite_parameters() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let root = store.roots().insert(&root("/photos", "写真"))?;
+    let asset = store.assets().insert(&asset(1))?;
+    let odd_names = [
+        "quote\"name.png",
+        "back\\slash.png",
+        "new\nline.png",
+        "日本語 スペース.png",
+    ];
+    for name in odd_names.iter().chain(["gone.png"].iter()) {
+        store.locations().insert(&NewLocation {
+            asset_id: asset.id,
+            root_id: root.id,
+            relative_path: name,
+            modified_at: 0,
+            status: LocationStatus::Present,
+        })?;
+    }
+    let mut seen: Vec<String> = (0..40_000)
+        .map(|index| format!("other/{index}.png"))
+        .collect();
+    seen.extend(odd_names.iter().map(|name| (*name).to_owned()));
+
+    assert_eq!(store.locations().mark_missing_except(root.id, &seen)?, 1);
+    let statuses: BTreeSet<(String, String)> = store
+        .locations()
+        .list_for_root(root.id)?
+        .into_iter()
+        .map(|location| (location.relative_path, location.status.as_str().to_owned()))
+        .collect();
+    assert!(statuses.contains(&("gone.png".to_owned(), "missing".to_owned())));
+    for name in odd_names {
+        assert!(
+            statuses.contains(&(name.to_owned(), "present".to_owned())),
+            "{name}"
+        );
+    }
+    assert_eq!(store.locations().mark_missing_except(root.id, &[])?, 4);
+    Ok(())
+}
+
+#[test]
+fn disconnected_roots_go_offline_without_losing_files() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let root = store.roots().insert(&root("/Volumes/外付け", "外付け"))?;
+    let asset = store.assets().insert(&asset(1))?;
+    for (path, status) in [
+        ("a.png", LocationStatus::Present),
+        ("b.png", LocationStatus::Missing),
+    ] {
+        store.locations().insert(&NewLocation {
+            asset_id: asset.id,
+            root_id: root.id,
+            relative_path: path,
+            modified_at: 0,
+            status,
+        })?;
+    }
+    assert_eq!(
+        store
+            .roots()
+            .set_status(root.id, RootStatus::Offline)?
+            .status,
+        RootStatus::Offline
+    );
+    assert_eq!(store.locations().mark_root_offline(root.id)?, 1);
+    let statuses: Vec<LocationStatus> = store
+        .locations()
+        .list_for_root(root.id)?
+        .into_iter()
+        .map(|location| location.status)
+        .collect();
+    assert!(statuses.contains(&LocationStatus::Offline));
+    assert!(statuses.contains(&LocationStatus::Missing));
+    assert!(store.assets().get(asset.id).is_ok());
+    assert!(store.roots().set_status(999, RootStatus::Online).is_err());
+    Ok(())
+}

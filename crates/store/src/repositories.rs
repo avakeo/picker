@@ -55,6 +55,17 @@ impl<'connection> RootRepository<'connection> {
         self.insert(root)
     }
 
+    pub fn set_status(&self, id: i64, status: RootStatus) -> Result<Root> {
+        let changed = self.connection.execute(
+            "UPDATE roots SET status = ?1, updated_at = unixepoch() WHERE id = ?2",
+            params![status.as_str(), id],
+        )?;
+        if changed == 0 {
+            return Err(StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows));
+        }
+        self.get(id)
+    }
+
     pub fn set_enabled(&self, id: i64, enabled: bool) -> Result<Root> {
         let changed = self.connection.execute(
             "UPDATE roots SET enabled = ?1, updated_at = unixepoch() WHERE id = ?2",
@@ -420,21 +431,25 @@ impl<'connection> LocationRepository<'connection> {
     }
 
     pub fn mark_missing_except(&self, root_id: i64, relative_paths: &[String]) -> Result<usize> {
-        if relative_paths.is_empty() {
-            return Ok(self.connection.execute("UPDATE locations SET status = 'missing', updated_at = unixepoch() WHERE root_id = ?1 AND status != 'missing'", [root_id])?);
-        }
-        let placeholders = std::iter::repeat_n("?", relative_paths.len())
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!("UPDATE locations SET status = 'missing', updated_at = unixepoch() WHERE root_id = ?1 AND relative_path NOT IN ({placeholders}) AND status != 'missing'");
-        let mut values: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(relative_paths.len() + 1);
-        values.push(&root_id);
-        for path in relative_paths {
-            values.push(path);
-        }
-        Ok(self
-            .connection
-            .execute(&sql, rusqlite::params_from_iter(values))?)
+        // One JSON parameter instead of one per path: a root can hold more
+        // files than SQLite allows bound parameters (32,766).
+        let paths = json_string_array(relative_paths);
+        Ok(self.connection.execute(
+            "UPDATE locations SET status = 'missing', updated_at = unixepoch()
+             WHERE root_id = ?1 AND status != 'missing'
+               AND relative_path NOT IN (SELECT value FROM json_each(?2))",
+            params![root_id, paths],
+        )?)
+    }
+
+    /// Marks the present files of a root as offline, for a volume that was
+    /// disconnected. Their assets, tags, and thumbnails stay.
+    pub fn mark_root_offline(&self, root_id: i64) -> Result<usize> {
+        Ok(self.connection.execute(
+            "UPDATE locations SET status = 'offline', updated_at = unixepoch()
+             WHERE root_id = ?1 AND status = 'present'",
+            [root_id],
+        )?)
     }
 }
 
@@ -935,4 +950,28 @@ fn collect<T>(
 ) -> Result<Vec<T>> {
     rows.collect::<rusqlite::Result<Vec<_>>>()
         .map_err(StoreError::from)
+}
+
+/// Encodes strings as a JSON array for `json_each`.
+fn json_string_array(values: &[String]) -> String {
+    let mut json = String::from("[");
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            json.push(',');
+        }
+        json.push('"');
+        for character in value.chars() {
+            match character {
+                '"' => json.push_str("\\\""),
+                '\\' => json.push_str("\\\\"),
+                control if u32::from(control) < 0x20 => {
+                    json.push_str(&format!("\\u{:04x}", u32::from(control)));
+                }
+                other => json.push(other),
+            }
+        }
+        json.push('"');
+    }
+    json.push(']');
+    json
 }
