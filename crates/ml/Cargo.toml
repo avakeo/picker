@@ -23,3 +23,8 @@ ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "
 [dev-dependencies]
 serde_json = "1"
 tempfile = "3"
+
+[[example]]
+name = "eval_zero_shot"
+# Runs the counting tests with `cargo test`; the example itself needs a model.
+test = true
