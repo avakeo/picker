@@ -22,6 +22,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::portable::{PortableAlbum, PortableColors, PortableFeedback, PortableRoot};
 
+/// Version recorded for the image stages (metadata, thumbnail, phash, color).
+pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v1";
+
 /// Portable representation of the non-regenerable tag data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -363,15 +366,26 @@ impl Library {
         Ok(self.store.roots().set_enabled(root_id, enabled)?)
     }
 
-    /// Synchronizes a root and processes newly discovered files.
+    /// Synchronizes a root and processes its queued image work before
+    /// returning. The desktop app uses [`Library::sync_root`] and leaves the
+    /// queue to the background workers instead.
     ///
     /// Thumbnail, metadata, and perceptual-hash failures are recorded per asset
     /// and do not stop the rest of the scan.
     pub fn scan_root(&self, root_id: i64) -> Result<IdentityReport> {
+        let report = self.sync_root(root_id)?;
+        self.run_queued_image_jobs()?;
+        Ok(report)
+    }
+
+    /// Synchronizes a root with the file system and queues image work for
+    /// files that still need it. Decisions waiting in a portable import are
+    /// applied here, because they only need the asset to exist.
+    pub fn sync_root(&self, root_id: i64) -> Result<IdentityReport> {
         let root = self.store.roots().get(root_id)?;
         let resolver = IdentityResolver::new(&self.store);
         let report = resolver.sync_root(root.id, &root.absolute_path)?;
-        self.process_root(root.id)?;
+        self.enqueue_unprocessed(root.id)?;
         for location in self.store.locations().list_for_root(root.id)? {
             if location.status == LocationStatus::Present {
                 let asset = self.store.assets().get(location.asset_id)?;
@@ -424,6 +438,7 @@ impl Library {
     }
 
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        crate::worker::validate_setting(key, value)?;
         self.store.settings().set(key, value)?;
         Ok(())
     }
@@ -613,49 +628,44 @@ impl Library {
         Ok(imported)
     }
 
-    fn process_root(&self, root_id: i64) -> Result<usize> {
-        let root = self.store.roots().get(root_id)?;
-        let mut processed = 0;
+    /// Queues image work for every present file of a root that lacks a
+    /// perceptual hash or a thumbnail, including files whose cache was removed.
+    fn enqueue_unprocessed(&self, root_id: i64) -> Result<usize> {
+        let mut queued = 0;
         for location in self.store.locations().list_for_root(root_id)? {
-            if location.status != LocationStatus::Present {
+            if location.status != LocationStatus::Present
+                || self.is_image_processed(location.asset_id)?
+            {
                 continue;
             }
-            let source = Path::new(&root.absolute_path).join(&location.relative_path);
-            let Some(format) = ImageFormat::from_path(&source) else {
-                continue;
-            };
-            let already_processed = self
-                .store
-                .assets()
-                .get(location.asset_id)?
-                .perceptual_hash
-                .is_some()
-                && self
-                    .thumbnail_path(location.asset_id, ThumbnailSize::Grid)
-                    .is_file()
-                && self
-                    .thumbnail_path(location.asset_id, ThumbnailSize::Detail)
-                    .is_file();
-            if already_processed {
-                continue;
-            }
-            match self.process_asset(location.asset_id, &source, format) {
-                Ok(()) => processed += 1,
-                Err(error) => {
-                    let _ = self.store.stage_states().upsert(
-                        StageTarget::Asset(location.asset_id),
-                        Stage::Thumbnail,
-                        StageStatus::Failed,
-                        "thumbnail-v1",
-                        Some(&error.to_string()),
-                    );
-                }
-            }
+            let target = StageTarget::Asset(location.asset_id);
+            self.store.jobs().enqueue(target, Stage::Metadata, 0, 3)?;
+            self.store.stage_states().upsert(
+                target,
+                Stage::Thumbnail,
+                StageStatus::Pending,
+                IMAGE_STAGE_VERSION,
+                None,
+            )?;
+            queued += 1;
         }
-        Ok(processed)
+        Ok(queued)
     }
 
-    fn process_asset(&self, asset_id: i64, source: &Path, format: ImageFormat) -> Result<()> {
+    pub(crate) fn is_image_processed(&self, asset_id: i64) -> Result<bool> {
+        Ok(self.store.assets().get(asset_id)?.perceptual_hash.is_some()
+            && self.thumbnail_path(asset_id, ThumbnailSize::Grid).is_file()
+            && self
+                .thumbnail_path(asset_id, ThumbnailSize::Detail)
+                .is_file())
+    }
+
+    pub(crate) fn process_asset(
+        &self,
+        asset_id: i64,
+        source: &Path,
+        format: ImageFormat,
+    ) -> Result<()> {
         let limits = picker_imaging::DecodeLimits::default();
         let cache = picker_imaging::ThumbnailCache::new(&self.cache_root);
         let decoder = PlatformDecoder;
@@ -917,7 +927,7 @@ impl Library {
             .map_err(|error| LibraryError::InvalidInput(error.to_string()))
     }
 
-    fn present_source(&self, asset_id: i64) -> Result<Option<PathBuf>> {
+    pub(crate) fn present_source(&self, asset_id: i64) -> Result<Option<PathBuf>> {
         for location in self.store.locations().list_for_asset(asset_id)? {
             if location.status != LocationStatus::Present {
                 continue;
