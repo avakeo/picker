@@ -35,6 +35,12 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Returns every model known to the registry with its install state.
+    #[must_use]
+    pub fn model_list(&self) -> Vec<picker_ml::ModelInfo> {
+        self.models.list()
+    }
+
     #[must_use]
     pub fn new(library: Library, models: ModelRegistry) -> Self {
         Self {
