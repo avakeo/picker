@@ -120,9 +120,8 @@ fn applies_tags_and_filters_by_parent() {
 
     let filter = picker_store::AssetFilter {
         tags: picker_store::TagFilter {
-            tag_ids: vec![animal.id],
-            mode: picker_store::TagMatchMode::All,
-            include_suggested: false,
+            all: vec![animal.id],
+            ..picker_store::TagFilter::default()
         },
         ..picker_store::AssetFilter::default()
     };

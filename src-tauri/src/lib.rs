@@ -225,6 +225,44 @@ mod tests {
     }
 
     #[test]
+    fn asset_filter_request_maps_the_three_tag_sets() {
+        let request: crate::contract::AssetFilterRequest =
+            serde_json::from_value(serde_json::json!({
+                "cursor": null,
+                "pageSize": 50,
+                "tagsAll": ["1"],
+                "tagsAny": ["2", "3"],
+                "tagsNone": ["4"],
+                "includeSuggested": true,
+                "formats": [],
+                "minWidth": null,
+                "minHeight": null,
+                "capturedFrom": null,
+                "capturedTo": null
+            }))
+            .expect("request should deserialize");
+        let filter = commands::filter_from_request(&request).expect("filter");
+        assert_eq!(filter.tags.all, vec![1]);
+        assert_eq!(filter.tags.any, vec![2, 3]);
+        assert_eq!(filter.tags.none, vec![4]);
+        assert!(filter.tags.include_suggested);
+
+        let mut invalid = request;
+        invalid.tags_none = vec!["../1".to_owned()];
+        assert!(commands::filter_from_request(&invalid).is_err());
+    }
+
+    #[test]
+    fn asset_filter_request_rejects_the_old_single_mode_shape() {
+        let old = serde_json::json!({
+            "cursor": null, "pageSize": 50, "tagIds": ["1"], "tagMode": "all",
+            "includeSuggested": false, "formats": [], "minWidth": null,
+            "minHeight": null, "capturedFrom": null, "capturedTo": null
+        });
+        assert!(serde_json::from_value::<crate::contract::AssetFilterRequest>(old).is_err());
+    }
+
+    #[test]
     fn dependency_licenses_come_from_the_bundled_sbom() {
         let licenses = dependency_licenses(SBOM);
         assert!(licenses

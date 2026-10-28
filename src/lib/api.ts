@@ -149,8 +149,9 @@ export function filterAssets(
   cursor: string | null,
   pageSize: number,
   filter: {
-    tagIds: string[];
-    tagMode: string;
+    tagsAll: string[];
+    tagsAny: string[];
+    tagsNone: string[];
     includeSuggested: boolean;
     formats: string[];
     minWidth: number | null;

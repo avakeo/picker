@@ -171,10 +171,11 @@ fn parent_filters_include_descendants_and_support_all_any_none() -> Result<()> {
         .tag_assignments()
         .set_user(assets[2].id, cat.id, TagState::Confirmed)?;
 
-    let filter = |mode, tags: Vec<i64>| AssetFilter {
+    let filter = |all: Vec<i64>, any: Vec<i64>, none: Vec<i64>| AssetFilter {
         tags: TagFilter {
-            tag_ids: tags,
-            mode,
+            all,
+            any,
+            none,
             include_suggested: false,
         },
         ..AssetFilter::default()
@@ -190,25 +191,32 @@ fn parent_filters_include_descendants_and_support_all_any_none() -> Result<()> {
     };
 
     assert_eq!(
-        ids(&filter(TagMatchMode::All, vec![animal.id])),
+        ids(&filter(vec![animal.id], vec![], vec![])),
         vec![assets[0].id, assets[1].id, assets[2].id]
     );
     assert_eq!(
-        ids(&filter(TagMatchMode::All, vec![animal.id, dog.id])),
+        ids(&filter(vec![animal.id, dog.id], vec![], vec![])),
         vec![assets[0].id, assets[2].id]
     );
     assert_eq!(
-        ids(&filter(TagMatchMode::Any, vec![dog.id, cat.id])),
+        ids(&filter(vec![], vec![dog.id, cat.id], vec![])),
         vec![assets[0].id, assets[1].id, assets[2].id]
     );
     assert_eq!(
-        ids(&filter(TagMatchMode::None, vec![dog.id])),
+        ids(&filter(vec![], vec![], vec![dog.id])),
         vec![assets[1].id]
     );
+    // The three sets are used together: animal AND (dog OR cat) AND NOT cat.
+    assert_eq!(
+        ids(&filter(vec![animal.id], vec![dog.id, cat.id], vec![cat.id])),
+        vec![assets[0].id]
+    );
+    // Excluding a parent excludes its children too.
+    assert!(ids(&filter(vec![], vec![], vec![animal.id])).is_empty());
     assert_eq!(
         store
             .asset_filters()
-            .count(&filter(TagMatchMode::All, vec![cat.id]))?,
+            .count(&filter(vec![cat.id], vec![], vec![]))?,
         2
     );
     Ok(())
@@ -225,19 +233,37 @@ fn attribute_filters_combine_with_tag_filters() -> Result<()> {
 
     let filter = AssetFilter {
         tags: TagFilter {
-            tag_ids: vec![tag.id],
-            mode: TagMatchMode::All,
-            include_suggested: false,
+            all: vec![tag.id],
+            ..TagFilter::default()
         },
         formats: vec!["PNG".to_owned()],
         min_width: Some(300),
         min_height: Some(200),
         captured_from: Some(1_700_000_000),
         captured_to: Some(1_800_000_000),
+        asset_ids: None,
     };
     let page = store.asset_filters().page(&filter, 0, 10)?;
     assert_eq!(page.len(), 1);
     assert_eq!(page[0].id, assets[1].id);
+
+    let restricted = |asset_ids: Vec<i64>| AssetFilter {
+        asset_ids: Some(asset_ids),
+        ..AssetFilter::default()
+    };
+    let restricted_ids = |filter: &AssetFilter| -> Result<Vec<i64>> {
+        Ok(store
+            .asset_filters()
+            .page(filter, 0, 10)?
+            .into_iter()
+            .map(|asset| asset.id)
+            .collect())
+    };
+    assert_eq!(
+        restricted_ids(&restricted(vec![assets[2].id, assets[0].id]))?,
+        vec![assets[0].id, assets[2].id]
+    );
+    assert!(restricted_ids(&restricted(Vec::new()))?.is_empty());
 
     let empty = AssetFilter {
         formats: vec!["gif".to_owned()],

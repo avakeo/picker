@@ -5,7 +5,7 @@ use std::{
 };
 
 use picker_core::{Library, ThumbnailState};
-use picker_store::{AssetFilter, LocationStatus, RootStatus, TagFilter, TagMatchMode, TagState};
+use picker_store::{AssetFilter, LocationStatus, RootStatus, TagFilter, TagState};
 use tauri::State;
 
 use crate::contract::{
@@ -182,22 +182,18 @@ fn tag_view(tag: picker_store::TagWithCount) -> TagView {
     }
 }
 
-fn filter_from_request(request: &AssetFilterRequest) -> CommandResult<AssetFilter> {
-    let mode = match request.tag_mode.as_str() {
-        "all" => TagMatchMode::All,
-        "any" => TagMatchMode::Any,
-        "none" => TagMatchMode::None,
-        other => return Err(format!("invalid tag mode: {other}")),
+pub(crate) fn filter_from_request(request: &AssetFilterRequest) -> CommandResult<AssetFilter> {
+    let ids = |values: &[String]| {
+        values
+            .iter()
+            .map(|id| parse_id(id))
+            .collect::<CommandResult<Vec<_>>>()
     };
-    let tag_ids = request
-        .tag_ids
-        .iter()
-        .map(|id| parse_id(id))
-        .collect::<CommandResult<Vec<_>>>()?;
     Ok(AssetFilter {
         tags: TagFilter {
-            tag_ids,
-            mode,
+            all: ids(&request.tags_all)?,
+            any: ids(&request.tags_any)?,
+            none: ids(&request.tags_none)?,
             include_suggested: request.include_suggested,
         },
         formats: request.formats.clone(),
@@ -205,6 +201,7 @@ fn filter_from_request(request: &AssetFilterRequest) -> CommandResult<AssetFilte
         min_height: request.min_height,
         captured_from: request.captured_from,
         captured_to: request.captured_to,
+        asset_ids: None,
     })
 }
 

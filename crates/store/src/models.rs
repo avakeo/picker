@@ -258,12 +258,6 @@ string_enum!(AssignmentSource {
     Rating => "rating",
     Laya => "laya",
 });
-string_enum!(TagMatchMode {
-    All => "all",
-    Any => "any",
-    None => "none",
-});
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
     pub id: i64,
@@ -312,21 +306,17 @@ pub struct TagWithCount {
     pub asset_count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Tag conditions (ui-contract 2.6, ADR-006). The three sets are combined with
+/// AND, and a parent tag also matches its descendants.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TagFilter {
-    pub tag_ids: Vec<i64>,
-    pub mode: TagMatchMode,
+    /// Every tag must be present.
+    pub all: Vec<i64>,
+    /// At least one tag must be present. Ignored when empty.
+    pub any: Vec<i64>,
+    /// No tag may be present.
+    pub none: Vec<i64>,
     pub include_suggested: bool,
-}
-
-impl Default for TagFilter {
-    fn default() -> Self {
-        Self {
-            tag_ids: Vec::new(),
-            mode: TagMatchMode::All,
-            include_suggested: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -337,6 +327,9 @@ pub struct AssetFilter {
     pub min_height: Option<u32>,
     pub captured_from: Option<i64>,
     pub captured_to: Option<i64>,
+    /// Restricts results to these assets, for conditions evaluated outside SQL
+    /// such as color. `Some(empty)` matches nothing.
+    pub asset_ids: Option<Vec<i64>>,
 }
 
 string_enum!(PendingItemKind {

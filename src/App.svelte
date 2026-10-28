@@ -116,8 +116,8 @@
   let loadingMore = false;
   let priorityTimer: ReturnType<typeof setTimeout> | undefined;
 
-  let selectedTagIds = new SvelteSet<string>();
-  let tagMode: TagMode = "all";
+  // Per-tag condition in the filter: all / any / none, or unset.
+  let tagModes: Record<string, TagMode> = {};
   let includeSuggested = false;
   let formatFilter = "";
   let minWidth = "";
@@ -266,10 +266,22 @@
     });
   }
 
+  function tagsWithMode(mode: TagMode): string[] {
+    return Object.keys(tagModes).filter((tagId) => tagModes[tagId] === mode);
+  }
+
+  function setTagMode(tagId: string, mode: string) {
+    const next = { ...tagModes };
+    if (mode === "all" || mode === "any" || mode === "none") next[tagId] = mode;
+    else delete next[tagId];
+    tagModes = next;
+  }
+
   function filterArgs() {
     return {
-      tagIds: [...selectedTagIds],
-      tagMode,
+      tagsAll: tagsWithMode("all"),
+      tagsAny: tagsWithMode("any"),
+      tagsNone: tagsWithMode("none"),
       includeSuggested,
       formats: formatFilter ? [formatFilter] : [],
       minWidth: minWidth ? Number(minWidth) : null,
@@ -430,8 +442,7 @@
   }
 
   async function clearFilter() {
-    selectedTagIds.clear();
-    tagMode = "all";
+    tagModes = {};
     includeSuggested = false;
     formatFilter = "";
     minWidth = "";
@@ -527,13 +538,6 @@
     viewMode = "duplicates";
     clearSelection();
     await guard(() => refreshPage(true));
-  }
-
-  function toggleFilterTag(tagId: string) {
-    const next = new SvelteSet(selectedTagIds);
-    if (next.has(tagId)) next.delete(tagId);
-    else next.add(tagId);
-    selectedTagIds = next;
   }
 
   async function handleAssignTag() {
@@ -711,9 +715,7 @@
     armedDeleteId = "";
     await guard(async () => {
       await deleteTag(tagId);
-      const next = new SvelteSet(selectedTagIds);
-      next.delete(tagId);
-      selectedTagIds = next;
+      setTagMode(tagId, "");
       await Promise.all([refreshTags(), refreshPage(true)]);
     });
   }
@@ -730,9 +732,7 @@
     if (!targetId || targetId === sourceId) return;
     await guard(async () => {
       await mergeTags(sourceId, targetId);
-      const next = new SvelteSet(selectedTagIds);
-      next.delete(sourceId);
-      selectedTagIds = next;
+      setTagMode(sourceId, "");
       await Promise.all([refreshTags(), refreshPage(true)]);
     });
   }
@@ -949,11 +949,6 @@
     <section class="tags">
       <h2>タグフィルタ</h2>
       <div class="filter-row">
-        <select bind:value={tagMode} aria-label="タグ条件">
-          <option value="all">すべて含む (AND)</option>
-          <option value="any">いずれか (OR)</option>
-          <option value="none">含まない (NOT)</option>
-        </select>
         <label class="check"><input type="checkbox" bind:checked={includeSuggested} /> 提案を含む</label>
       </div>
 
@@ -971,12 +966,17 @@
 
       <div class="filter-list">
         {#each tags as tag (tag.id)}
-          <label class="check tag-filter">
-            <input
-              type="checkbox"
-              checked={selectedTagIds.has(tag.id)}
-              onchange={() => toggleFilterTag(tag.id)}
-            />
+          <label class="tag-filter">
+            <select
+              value={tagModes[tag.id] ?? ""}
+              aria-label={`${tag.displayNameJa}の条件`}
+              onchange={(event) => setTagMode(tag.id, event.currentTarget.value)}
+            >
+              <option value="">指定しない</option>
+              <option value="all">すべて含む</option>
+              <option value="any">いずれか</option>
+              <option value="none">含まない</option>
+            </select>
             {tag.displayNameJa} <span class="muted">({tag.assetCount})</span>
           </label>
         {/each}

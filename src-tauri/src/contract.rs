@@ -620,8 +620,12 @@ pub struct TagRemoveRequest {
 pub struct AssetFilterRequest {
     pub cursor: Option<String>,
     pub page_size: u32,
-    pub tag_ids: Vec<String>,
-    pub tag_mode: String,
+    /// Tags that must all be present (ui-contract 2.6).
+    pub tags_all: Vec<String>,
+    /// Tags of which at least one must be present. Ignored when empty.
+    pub tags_any: Vec<String>,
+    /// Tags that must not be present.
+    pub tags_none: Vec<String>,
     pub include_suggested: bool,
     pub formats: Vec<String>,
     pub min_width: Option<u32>,

@@ -123,7 +123,19 @@ export type TagAssignRequest = { assetIds: Array<string>, tagId: string, };
 
 export type TagRemoveRequest = { assetIds: Array<string>, tagId: string, };
 
-export type AssetFilterRequest = { cursor: string | null, pageSize: number, tagIds: Array<string>, tagMode: string, includeSuggested: boolean, formats: Array<string>, minWidth: number | null, minHeight: number | null, capturedFrom: bigint | null, capturedTo: bigint | null, };
+export type AssetFilterRequest = { cursor: string | null, pageSize: number,
+/**
+ * Tags that must all be present (ui-contract 2.6).
+ */
+tagsAll: Array<string>,
+/**
+ * Tags of which at least one must be present. Ignored when empty.
+ */
+tagsAny: Array<string>,
+/**
+ * Tags that must not be present.
+ */
+tagsNone: Array<string>, includeSuggested: boolean, formats: Array<string>, minWidth: number | null, minHeight: number | null, capturedFrom: bigint | null, capturedTo: bigint | null, };
 
 export type ColorView = { rank: number, hex: string, ratio: number, source: string, };
 

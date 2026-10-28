@@ -2,7 +2,7 @@ use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExten
 
 use crate::{
     Asset, AssetFilter, AssignmentSource, NewTag, Result, StoreError, Tag, TagAlias, TagAssignment,
-    TagMatchMode, TagState, TagWithCount,
+    TagState, TagWithCount,
 };
 
 fn validate_nonempty(field: &'static str, value: &str) -> Result<()> {
@@ -837,54 +837,43 @@ impl<'connection> AssetFilterRepository<'connection> {
             values.push(Value::Integer(to));
         }
 
-        if !filter.tags.tag_ids.is_empty() {
-            let mut groups = Vec::new();
-            for tag_id in &filter.tags.tag_ids {
-                groups.push(self.descendants(*tag_id)?);
-            }
-            let states = if filter.tags.include_suggested {
-                "'confirmed', 'suggested'"
-            } else {
-                "'confirmed'"
-            };
-            match filter.tags.mode {
-                TagMatchMode::Any | TagMatchMode::None => {
-                    let ids = unique(groups.concat());
-                    let mut placeholders = Vec::with_capacity(ids.len());
-                    for id in &ids {
-                        values.push(Value::Integer(*id));
-                        placeholders.push("?");
-                    }
-                    let exists = format!(
-                        "EXISTS (SELECT 1 FROM tag_assignments
-                         WHERE tag_assignments.asset_id = assets.id
-                           AND tag_assignments.state IN ({states})
-                           AND tag_assignments.tag_id IN ({}))",
-                        placeholders.join(", ")
-                    );
-                    conditions.push(if filter.tags.mode == TagMatchMode::None {
-                        format!("NOT {exists}")
-                    } else {
-                        exists
-                    });
-                }
-                TagMatchMode::All => {
-                    for ids in groups {
-                        let mut placeholders = Vec::with_capacity(ids.len());
-                        for id in &ids {
-                            values.push(Value::Integer(*id));
-                            placeholders.push("?");
-                        }
-                        conditions.push(format!(
-                            "EXISTS (SELECT 1 FROM tag_assignments
-                             WHERE tag_assignments.asset_id = assets.id
-                               AND tag_assignments.state IN ({states})
-                               AND tag_assignments.tag_id IN ({}))",
-                            placeholders.join(", ")
-                        ));
-                    }
-                }
-            }
+        if let Some(asset_ids) = &filter.asset_ids {
+            let ids = asset_ids
+                .iter()
+                .map(i64::to_string)
+                .collect::<Vec<_>>()
+                .join(",");
+            conditions.push("id IN (SELECT value FROM json_each(?))".to_owned());
+            values.push(Value::Text(format!("[{ids}]")));
+        }
+
+        let states = if filter.tags.include_suggested {
+            "'confirmed', 'suggested'"
+        } else {
+            "'confirmed'"
+        };
+        let has_any_of = |ids: &[i64], values: &mut Vec<Value>| -> String {
+            let placeholders = vec!["?"; ids.len()].join(", ");
+            values.extend(ids.iter().map(|id| Value::Integer(*id)));
+            format!(
+                "EXISTS (SELECT 1 FROM tag_assignments
+                 WHERE tag_assignments.asset_id = assets.id
+                   AND tag_assignments.state IN ({states})
+                   AND tag_assignments.tag_id IN ({placeholders}))"
+            )
+        };
+        for tag_id in &filter.tags.all {
+            let ids = self.descendants(*tag_id)?;
+            conditions.push(has_any_of(&ids, &mut values));
+        }
+        if !filter.tags.any.is_empty() {
+            let ids = self.descendants_of_all(&filter.tags.any)?;
+            conditions.push(has_any_of(&ids, &mut values));
+        }
+        if !filter.tags.none.is_empty() {
+            let ids = self.descendants_of_all(&filter.tags.none)?;
+            let exists = has_any_of(&ids, &mut values);
+            conditions.push(format!("NOT {exists}"));
         }
 
         let clause = if conditions.is_empty() {
@@ -893,6 +882,14 @@ impl<'connection> AssetFilterRepository<'connection> {
             format!("WHERE {}", conditions.join(" AND "))
         };
         Ok((clause, values))
+    }
+
+    fn descendants_of_all(&self, tag_ids: &[i64]) -> Result<Vec<i64>> {
+        let mut ids = Vec::new();
+        for tag_id in tag_ids {
+            ids.extend(self.descendants(*tag_id)?);
+        }
+        Ok(unique(ids))
     }
 
     fn descendants(&self, tag_id: i64) -> Result<Vec<i64>> {
