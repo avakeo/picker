@@ -156,7 +156,7 @@ fn invalid_vectors_are_rejected() {
 fn embeddings_can_be_listed_by_update_time_and_deleted_together() {
     let store = store();
     let mut ids = Vec::new();
-    for byte in [b'a', b'b'] {
+    for byte in *b"ab" {
         ids.push(
             store
                 .assets()
