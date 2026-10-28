@@ -330,6 +330,12 @@ pub struct AssetFilter {
     /// Restricts results to these assets, for conditions evaluated outside SQL
     /// such as color. `Some(empty)` matches nothing.
     pub asset_ids: Option<Vec<i64>>,
+    /// Only assets added to the index at or after this Unix time.
+    pub added_since: Option<i64>,
+    /// Only assets without any confirmed tag.
+    pub untagged: bool,
+    /// Only assets with at least one unreviewed (`suggested`) tag.
+    pub has_suggested: bool,
 }
 
 string_enum!(PendingItemKind {

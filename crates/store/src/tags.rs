@@ -837,6 +837,24 @@ impl<'connection> AssetFilterRepository<'connection> {
             values.push(Value::Integer(to));
         }
 
+        if let Some(since) = filter.added_since {
+            conditions.push("created_at >= ?".to_owned());
+            values.push(Value::Integer(since));
+        }
+        if filter.untagged {
+            conditions.push(
+                "NOT EXISTS (SELECT 1 FROM tag_assignments
+                 WHERE tag_assignments.asset_id = assets.id AND tag_assignments.state = 'confirmed')"
+                    .to_owned(),
+            );
+        }
+        if filter.has_suggested {
+            conditions.push(
+                "EXISTS (SELECT 1 FROM tag_assignments
+                 WHERE tag_assignments.asset_id = assets.id AND tag_assignments.state = 'suggested')"
+                    .to_owned(),
+            );
+        }
         if let Some(asset_ids) = &filter.asset_ids {
             let ids = asset_ids
                 .iter()

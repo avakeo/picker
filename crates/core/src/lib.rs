@@ -2,6 +2,7 @@
 
 //! Domain and use-case layer for the Picker application.
 
+mod auto_album;
 mod library;
 mod palette;
 mod portable;
@@ -9,6 +10,7 @@ mod portable;
 #[cfg(test)]
 mod tests;
 
+pub use auto_album::{default_auto_albums, AlbumQuery, TagRef};
 pub use library::{
     AssetDetail, AssetPage, AssetSummary, AssetTag, IndexStatus, Library, LibraryError,
     LocationView, Result, RootSummary, StageProgress, ThumbnailState, PORTABLE_EXPORT_VERSION,

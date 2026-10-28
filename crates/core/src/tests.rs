@@ -1351,6 +1351,267 @@ fn color_search_meets_the_response_target_for_50k_images() {
     assert!(elapsed.as_millis() < 200, "color search took {elapsed:?}");
 }
 
+fn unix_now() -> i64 {
+    i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_secs(),
+    )
+    .expect("time")
+}
+
+fn auto_names(library: &Library, album_id: i64, now: i64) -> Vec<String> {
+    let mut names: Vec<String> = library
+        .auto_album_page(album_id, now, 0, 100)
+        .expect("auto album")
+        .items
+        .into_iter()
+        .map(|item| {
+            library
+                .store()
+                .locations()
+                .list_for_asset(item.id)
+                .expect("locations")[0]
+                .relative_path
+                .clone()
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn default_auto_albums_are_created_once() {
+    let cache = tempfile::tempdir().expect("cache");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    assert_eq!(library.ensure_default_auto_albums().expect("defaults"), 3);
+    let albums = library.list_albums().expect("albums");
+    let names: Vec<&str> = albums
+        .iter()
+        .map(|entry| entry.album.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["最近追加した画像", "タグのない画像", "未確認の自動タグあり"]
+    );
+    assert!(albums
+        .iter()
+        .all(|entry| entry.album.kind == picker_store::AlbumKind::Auto));
+
+    library.delete_album(albums[0].album.id).expect("delete");
+    assert_eq!(library.ensure_default_auto_albums().expect("again"), 0);
+    assert_eq!(library.list_albums().expect("albums").len(), 2);
+}
+
+#[test]
+fn auto_albums_follow_changes_on_the_next_evaluation() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    fs::write(media.path().join("two.png"), png_bytes(60)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    library.ensure_default_auto_albums().expect("defaults");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let one = asset_id_named(&library, "one.png");
+    let now = unix_now();
+    let album_named = |name: &str| {
+        library
+            .list_albums()
+            .expect("albums")
+            .into_iter()
+            .find(|entry| entry.album.name == name)
+            .expect("album")
+            .album
+            .id
+    };
+    let recent = album_named("最近追加した画像");
+    let untagged = album_named("タグのない画像");
+    let unreviewed = album_named("未確認の自動タグあり");
+    let both = vec!["one.png".to_owned(), "two.png".to_owned()];
+
+    assert_eq!(auto_names(&library, recent, now), both);
+    assert!(auto_names(&library, recent, now + 31 * 24 * 60 * 60).is_empty());
+    assert_eq!(auto_names(&library, untagged, now), both);
+    assert!(auto_names(&library, unreviewed, now).is_empty());
+
+    let tag = library
+        .create_tag("beach", "海辺", None, None)
+        .expect("tag");
+    let beach = library
+        .create_auto_album(
+            "海辺",
+            &crate::AlbumQuery {
+                tags_all: vec![library.tag_ref(tag.id).expect("ref")],
+                ..crate::AlbumQuery::default()
+            },
+        )
+        .expect("auto album");
+    assert!(auto_names(&library, beach.id, now).is_empty());
+
+    library
+        .set_tag_on_assets(&[one], tag.id, picker_store::TagState::Confirmed)
+        .expect("confirm");
+    assert_eq!(
+        auto_names(&library, beach.id, now),
+        vec!["one.png".to_owned()]
+    );
+    assert_eq!(
+        auto_names(&library, untagged, now),
+        vec!["two.png".to_owned()]
+    );
+
+    library
+        .remove_tag_from_assets(&[one], tag.id)
+        .expect("remove");
+    assert!(auto_names(&library, beach.id, now).is_empty());
+
+    let two = asset_id_named(&library, "two.png");
+    library
+        .store()
+        .tag_assignments()
+        .upsert_suggested(
+            two,
+            tag.id,
+            picker_store::AssignmentSource::ZeroShot,
+            0.6,
+            "clip",
+            "v1",
+        )
+        .expect("suggest");
+    assert_eq!(
+        auto_names(&library, unreviewed, now),
+        vec!["two.png".to_owned()]
+    );
+
+    // Editing the condition changes the result on the next evaluation.
+    library
+        .set_auto_album_query(
+            beach.id,
+            &crate::AlbumQuery {
+                tags_all: vec![library.tag_ref(tag.id).expect("ref")],
+                include_suggested: true,
+                ..crate::AlbumQuery::default()
+            },
+        )
+        .expect("edit");
+    assert_eq!(
+        auto_names(&library, beach.id, now),
+        vec!["two.png".to_owned()]
+    );
+}
+
+#[test]
+fn exported_auto_albums_give_the_same_result_after_import() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    let red = [220, 30, 30];
+    let blue = [30, 90, 220];
+    fs::write(media.path().join("red.png"), two_color_png(red, red, 100)).expect("write");
+    fs::write(
+        media.path().join("blue.png"),
+        two_color_png(blue, blue, 100),
+    )
+    .expect("write");
+    fs::write(media.path().join("mixed.png"), two_color_png(blue, red, 70)).expect("write");
+    let source = Library::open_in_memory(cache.path()).expect("library");
+    let root = source.add_root(media.path(), "root").expect("root");
+    source.scan_root(root.id).expect("scan");
+    let tag = source
+        .create_tag("poster", "ポスター", None, None)
+        .expect("tag");
+    source
+        .set_tag_on_assets(
+            &[
+                asset_id_named(&source, "red.png"),
+                asset_id_named(&source, "mixed.png"),
+            ],
+            tag.id,
+            picker_store::TagState::Confirmed,
+        )
+        .expect("tag");
+    let album = source
+        .create_auto_album(
+            "赤いポスター",
+            &crate::AlbumQuery {
+                tags_all: vec![source.tag_ref(tag.id).expect("ref")],
+                colors: vec!["red".to_owned()],
+                colors_any_of_three: true,
+                ..crate::AlbumQuery::default()
+            },
+        )
+        .expect("auto album");
+    let now = unix_now();
+    let expected = auto_names(&source, album.id, now);
+    assert_eq!(expected, vec!["mixed.png".to_owned(), "red.png".to_owned()]);
+    let export_dir = tempfile::tempdir().expect("export");
+    let path = export_dir.path().join("library.json");
+    source.export_portable(&path).expect("export");
+
+    let cache2 = tempfile::tempdir().expect("cache2");
+    let restored = Library::open_in_memory(cache2.path()).expect("library2");
+    restored.import_portable(&path).expect("import");
+    let root = restored.list_roots().expect("roots")[0].root.clone();
+    restored.scan_root(root.id).expect("scan");
+    let restored_album = restored
+        .list_albums()
+        .expect("albums")
+        .into_iter()
+        .find(|entry| entry.album.name == "赤いポスター")
+        .expect("album")
+        .album;
+    assert_eq!(restored_album.kind, picker_store::AlbumKind::Auto);
+    assert_eq!(auto_names(&restored, restored_album.id, now), expected);
+}
+
+#[test]
+fn auto_album_inputs_are_validated() {
+    let cache = tempfile::tempdir().expect("cache");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let bad_color = crate::AlbumQuery {
+        colors: vec!["gray".to_owned()],
+        ..crate::AlbumQuery::default()
+    };
+    assert!(library.create_auto_album("灰", &bad_color).is_err());
+    assert!(library.list_albums().expect("albums").is_empty());
+
+    let manual = library.create_album("手動").expect("album");
+    assert!(library
+        .set_auto_album_query(manual.id, &crate::AlbumQuery::default())
+        .is_err());
+    assert!(library.auto_album_query(manual.id).is_err());
+    assert!(library.auto_album_page(manual.id, 0, 0, 10).is_err());
+
+    // A tag that no longer exists in `tags_all` matches nothing.
+    let missing = library
+        .create_auto_album(
+            "消えたタグ",
+            &crate::AlbumQuery {
+                tags_all: vec![crate::TagRef {
+                    namespace: "user".to_owned(),
+                    canonical_name: "gone".to_owned(),
+                }],
+                ..crate::AlbumQuery::default()
+            },
+        )
+        .expect("album");
+    assert_eq!(
+        library
+            .auto_album_page(missing.id, 0, 0, 10)
+            .expect("page")
+            .total,
+        0
+    );
+
+    assert!(crate::AlbumQuery::from_json("{\"unknown\": 1}").is_err());
+    assert!(crate::AlbumQuery::from_json("not json").is_err());
+    assert_eq!(
+        crate::AlbumQuery::from_json("{}").expect("empty"),
+        crate::AlbumQuery::default()
+    );
+}
+
 #[test]
 fn xmp_export_writes_only_when_enabled_and_preserves_existing_fields() {
     let media = tempfile::tempdir().expect("media");

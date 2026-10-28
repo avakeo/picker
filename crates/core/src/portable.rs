@@ -20,13 +20,17 @@ pub struct PortableRoot {
     pub enabled: bool,
 }
 
-/// A manual album with its items as asset hashes in display order.
+/// A manual album with its items as asset hashes in display order, or an
+/// automatic album with its saved condition and no items.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PortableAlbum {
     pub name: String,
     pub sort_order: i64,
     pub items: Vec<String>,
+    /// The saved condition of an automatic album (JSON of `AlbumQuery`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -106,7 +110,13 @@ impl Library {
         let mut albums = Vec::new();
         for entry in store.albums().list()? {
             let album = entry.album;
-            if album.kind != picker_store::AlbumKind::Manual {
+            if album.kind == picker_store::AlbumKind::Auto {
+                albums.push(PortableAlbum {
+                    name: album.name,
+                    sort_order: album.sort_order,
+                    items: Vec::new(),
+                    query: album.query,
+                });
                 continue;
             }
             let mut items = Vec::new();
@@ -117,6 +127,7 @@ impl Library {
                 name: album.name,
                 sort_order: album.sort_order,
                 items,
+                query: None,
             });
         }
 
@@ -170,13 +181,18 @@ impl Library {
             }
         }
         for (name, pending) in album_items {
-            let index = match extras.albums.iter().position(|album| album.name == name) {
+            let index = match extras
+                .albums
+                .iter()
+                .position(|album| album.name == name && album.query.is_none())
+            {
                 Some(index) => index,
                 None => {
                     extras.albums.push(PortableAlbum {
                         name,
                         sort_order: 0,
                         items: Vec::new(),
+                        query: None,
                     });
                     extras.albums.len() - 1
                 }
@@ -287,6 +303,18 @@ impl Library {
 
     fn import_album(&self, album: &PortableAlbum) -> Result<()> {
         let albums = self.store().albums();
+        if let Some(query) = &album.query {
+            let query = crate::auto_album::AlbumQuery::from_json(query)?;
+            match albums.find_auto_by_name(&album.name)? {
+                Some(existing) => {
+                    self.set_auto_album_query(existing.id, &query)?;
+                }
+                None => {
+                    self.create_auto_album(&album.name, &query)?;
+                }
+            }
+            return Ok(());
+        }
         let target = match albums.find_manual_by_name(&album.name)? {
             Some(existing) => existing,
             None => albums.create(&album.name, album.sort_order)?,

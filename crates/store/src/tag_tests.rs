@@ -241,7 +241,7 @@ fn attribute_filters_combine_with_tag_filters() -> Result<()> {
         min_height: Some(200),
         captured_from: Some(1_700_000_000),
         captured_to: Some(1_800_000_000),
-        asset_ids: None,
+        ..AssetFilter::default()
     };
     let page = store.asset_filters().page(&filter, 0, 10)?;
     assert_eq!(page.len(), 1);

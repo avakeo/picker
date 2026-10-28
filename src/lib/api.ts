@@ -18,7 +18,8 @@ import type {
   ModelProgressEvent,
   EmbeddingStatusView,
   ModelView,
-  PaletteColorView
+  PaletteColorView,
+  AlbumQueryView
 } from "./generated/ui-contract";
 
 export type { AssetDetailView, AssetPageView, AssetSummaryView, IndexStatusView, RootView } from "./generated/ui-contract";
@@ -219,6 +220,22 @@ export function removeAlbumAssets(albumId: string, assetIds: string[]): Promise<
 
 export function reorderAlbum(albumId: string, assetIds: string[]): Promise<void> {
   return invoke("album_reorder", { request: { albumId, assetIds } });
+}
+
+export function createAutoAlbum(name: string, query: AlbumQueryView): Promise<AlbumView> {
+  return invoke("album_create_auto", { request: { name, query } });
+}
+
+export function setAlbumQuery(id: string, query: AlbumQueryView): Promise<AlbumView> {
+  return invoke("album_set_query", { request: { id, query } });
+}
+
+export function autoAlbumPage(
+  id: string,
+  cursor: string | null,
+  pageSize: number
+): Promise<AssetPageView> {
+  return invoke("album_auto_page", { request: { id, cursor, pageSize } });
 }
 
 export function listAlbumAssets(id: string): Promise<AssetSummaryView[]> {

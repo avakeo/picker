@@ -138,6 +138,10 @@ pub fn run() {
             commands::album_remove_assets,
             commands::album_reorder,
             commands::album_assets,
+            commands::album_create_auto,
+            commands::album_set_query,
+            commands::album_query,
+            commands::album_auto_page,
             commands::models_list,
             commands::model_install,
             commands::model_activate,
@@ -173,6 +177,9 @@ pub fn run() {
                 library.snapshot_if_due(&data_dir.join("snapshots"), now, 24 * 60 * 60, 7)
             {
                 eprintln!("database snapshot failed: {error}");
+            }
+            if let Err(error) = library.ensure_default_auto_albums() {
+                eprintln!("default albums unavailable: {error}");
             }
             app.manage(commands::AppState::new(library, models));
             let _core = create_core();
@@ -271,6 +278,45 @@ mod tests {
             "minHeight": null, "capturedFrom": null, "capturedTo": null
         });
         assert!(serde_json::from_value::<crate::contract::AssetFilterRequest>(old).is_err());
+    }
+
+    #[test]
+    fn album_query_views_round_trip_through_tag_references() {
+        let cache = tempfile::tempdir().expect("cache");
+        let library = picker_core::Library::open_in_memory(cache.path()).expect("library");
+        let tag = library
+            .create_tag("beach", "海辺", None, None)
+            .expect("tag");
+        let view = crate::contract::AlbumQueryView {
+            tags_all: vec![tag.id.to_string()],
+            tags_any: Vec::new(),
+            tags_none: Vec::new(),
+            include_suggested: false,
+            colors: vec!["blue".to_owned()],
+            color_scope: "any".to_owned(),
+            formats: Vec::new(),
+            min_width: None,
+            min_height: None,
+            captured_from: None,
+            captured_to: None,
+            added_within_days: Some(30),
+            untagged: false,
+            has_suggested: true,
+        };
+        let query = commands::album_query_from_view(&library, &view).expect("query");
+        assert_eq!(query.tags_all[0].canonical_name, "beach");
+        assert!(query.colors_any_of_three);
+        assert_eq!(
+            commands::album_query_view(&library, query).expect("view"),
+            view
+        );
+
+        let mut bad_scope = view.clone();
+        bad_scope.color_scope = "all".to_owned();
+        assert!(commands::album_query_from_view(&library, &bad_scope).is_err());
+        let mut unknown_tag = view;
+        unknown_tag.tags_none = vec!["999".to_owned()];
+        assert!(commands::album_query_from_view(&library, &unknown_tag).is_err());
     }
 
     #[test]

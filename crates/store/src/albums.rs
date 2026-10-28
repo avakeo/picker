@@ -12,6 +12,16 @@ fn validate_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_query(query: &str) -> Result<()> {
+    if query.trim().is_empty() || query.len() > 64 * 1024 {
+        return Err(StoreError::InvalidInput {
+            field: "album query",
+            reason: "must be non-empty and at most 64 KiB".to_owned(),
+        });
+    }
+    Ok(())
+}
+
 fn album_from_row(row: &Row<'_>) -> rusqlite::Result<Album> {
     let kind: String = row.get(2)?;
     Ok(Album {
@@ -46,6 +56,46 @@ impl<'connection> AlbumRepository<'connection> {
             params![name.trim(), sort_order],
         )?;
         self.get(self.connection.last_insert_rowid())
+    }
+
+    /// Creates an automatic album whose membership is evaluated from `query`.
+    pub fn create_auto(&self, name: &str, query: &str, sort_order: i64) -> Result<Album> {
+        validate_name(name)?;
+        validate_query(query)?;
+        self.connection.execute(
+            "INSERT INTO albums (name, kind, query, sort_order) VALUES (?1, 'auto', ?2, ?3)",
+            params![name.trim(), query, sort_order],
+        )?;
+        self.get(self.connection.last_insert_rowid())
+    }
+
+    /// Replaces the saved condition of an automatic album.
+    pub fn set_query(&self, id: i64, query: &str) -> Result<Album> {
+        validate_query(query)?;
+        if self.get(id)?.kind != AlbumKind::Auto {
+            return Err(StoreError::InvalidInput {
+                field: "album kind",
+                reason: "only automatic albums have a condition".to_owned(),
+            });
+        }
+        self.connection.execute(
+            "UPDATE albums SET query = ?1, updated_at = unixepoch() WHERE id = ?2",
+            params![query, id],
+        )?;
+        self.get(id)
+    }
+
+    /// Returns the first automatic album with this name, if any.
+    pub fn find_auto_by_name(&self, name: &str) -> Result<Option<Album>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT id, name, kind, query, sort_order FROM albums
+                 WHERE kind = 'auto' AND name = ?1 ORDER BY id LIMIT 1",
+                [name.trim()],
+                album_from_row,
+            )
+            .optional()?)
     }
 
     /// Returns the first manual album with this name, if any.

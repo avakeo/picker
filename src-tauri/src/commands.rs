@@ -16,9 +16,10 @@ use picker_ml::ModelRegistry;
 use std::sync::Arc;
 
 use crate::contract::{
-    AlbumAssetsRequest, AlbumCreateRequest, AlbumRenameRequest, AlbumReorderRequest, AlbumView,
-    AssetDetailView, AssetFilterRequest, AssetMetadataView, AssetPageView, AssetSearchRequest,
-    AssetSummaryView, AssetTagView, ColorSetRequest, ColorView, CustomSuggestRequest,
+    AlbumAssetsRequest, AlbumCreateRequest, AlbumQueryView, AlbumRenameRequest,
+    AlbumReorderRequest, AlbumView, AssetDetailView, AssetFilterRequest, AssetMetadataView,
+    AssetPageView, AssetSearchRequest, AssetSummaryView, AssetTagView, AutoAlbumCreateRequest,
+    AutoAlbumPageRequest, AutoAlbumQueryRequest, ColorSetRequest, ColorView, CustomSuggestRequest,
     EmbeddingIndexRequest, EmbeddingStatusView, EventContract, FinderRevealRequest, IdRequest,
     IndexProgressChanged, IndexProgressChangedPayload, IndexStageProgress, IndexStatusView,
     LocationView, ModelIdRequest, ModelProgressEvent, ModelView, PaletteColorView, RootAddRequest,
@@ -215,7 +216,7 @@ pub(crate) fn filter_from_request(request: &AssetFilterRequest) -> CommandResult
         min_height: request.min_height,
         captured_from: request.captured_from,
         captured_to: request.captured_to,
-        asset_ids: None,
+        ..AssetFilter::default()
     })
 }
 
@@ -806,6 +807,155 @@ pub fn color_reset(
         .map_err(error)
 }
 
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| i64::try_from(elapsed.as_secs()).ok())
+        .unwrap_or(0)
+}
+
+pub(crate) fn album_query_from_view(
+    library: &Library,
+    view: &AlbumQueryView,
+) -> CommandResult<picker_core::AlbumQuery> {
+    let refs = |ids: &[String]| {
+        ids.iter()
+            .map(|id| library.tag_ref(parse_id(id)?).map_err(error))
+            .collect::<CommandResult<Vec<_>>>()
+    };
+    let colors_any_of_three = match view.color_scope.as_str() {
+        "main" => false,
+        "any" => true,
+        other => return Err(format!("invalid color scope: {other}")),
+    };
+    Ok(picker_core::AlbumQuery {
+        tags_all: refs(&view.tags_all)?,
+        tags_any: refs(&view.tags_any)?,
+        tags_none: refs(&view.tags_none)?,
+        include_suggested: view.include_suggested,
+        colors: view.colors.clone(),
+        colors_any_of_three,
+        formats: view.formats.clone(),
+        min_width: view.min_width,
+        min_height: view.min_height,
+        captured_from: view.captured_from,
+        captured_to: view.captured_to,
+        added_within_days: view.added_within_days,
+        untagged: view.untagged,
+        has_suggested: view.has_suggested,
+    })
+}
+
+/// Tags that no longer exist are left out of the view.
+pub(crate) fn album_query_view(
+    library: &Library,
+    query: picker_core::AlbumQuery,
+) -> CommandResult<AlbumQueryView> {
+    let ids = |refs: &[picker_core::TagRef]| -> CommandResult<Vec<String>> {
+        let mut ids = Vec::with_capacity(refs.len());
+        for tag in refs {
+            if let Some(found) = library
+                .store()
+                .tags()
+                .find(&tag.namespace, &tag.canonical_name)
+                .map_err(|error| error.to_string())?
+            {
+                ids.push(found.id.to_string());
+            }
+        }
+        Ok(ids)
+    };
+    Ok(AlbumQueryView {
+        tags_all: ids(&query.tags_all)?,
+        tags_any: ids(&query.tags_any)?,
+        tags_none: ids(&query.tags_none)?,
+        include_suggested: query.include_suggested,
+        colors: query.colors,
+        color_scope: if query.colors_any_of_three {
+            "any"
+        } else {
+            "main"
+        }
+        .to_owned(),
+        formats: query.formats,
+        min_width: query.min_width,
+        min_height: query.min_height,
+        captured_from: query.captured_from,
+        captured_to: query.captured_to,
+        added_within_days: query.added_within_days,
+        untagged: query.untagged,
+        has_suggested: query.has_suggested,
+    })
+}
+
+#[tauri::command]
+pub fn album_create_auto(
+    state: State<'_, AppState>,
+    request: AutoAlbumCreateRequest,
+) -> CommandResult<AlbumView> {
+    let library = state.library();
+    let query = album_query_from_view(&library, &request.query)?;
+    let album = library
+        .create_auto_album(&request.name, &query)
+        .map_err(error)?;
+    let asset_count = library
+        .auto_album_page(album.id, unix_now(), 0, 1)
+        .map_err(error)?
+        .total;
+    Ok(album_view(picker_store::AlbumWithCount {
+        album,
+        asset_count,
+    }))
+}
+
+#[tauri::command]
+pub fn album_set_query(
+    state: State<'_, AppState>,
+    request: AutoAlbumQueryRequest,
+) -> CommandResult<AlbumView> {
+    let id = parse_id(&request.id)?;
+    let library = state.library();
+    let query = album_query_from_view(&library, &request.query)?;
+    let album = library.set_auto_album_query(id, &query).map_err(error)?;
+    let asset_count = library
+        .auto_album_page(album.id, unix_now(), 0, 1)
+        .map_err(error)?
+        .total;
+    Ok(album_view(picker_store::AlbumWithCount {
+        album,
+        asset_count,
+    }))
+}
+
+#[tauri::command]
+pub fn album_query(
+    state: State<'_, AppState>,
+    request: IdRequest,
+) -> CommandResult<AlbumQueryView> {
+    let id = parse_id(&request.id)?;
+    let library = state.library();
+    let query = library.auto_album_query(id).map_err(error)?;
+    album_query_view(&library, query)
+}
+
+#[tauri::command]
+pub fn album_auto_page(
+    state: State<'_, AppState>,
+    request: AutoAlbumPageRequest,
+) -> CommandResult<AssetPageView> {
+    let id = parse_id(&request.id)?;
+    let after = match request.cursor.as_deref() {
+        Some(cursor) => parse_id(cursor)?,
+        None => 0,
+    };
+    state
+        .library()
+        .auto_album_page(id, unix_now(), after, request.page_size)
+        .map(page_view)
+        .map_err(error)
+}
+
 fn album_view(album: picker_store::AlbumWithCount) -> AlbumView {
     AlbumView {
         id: album.album.id.to_string(),
@@ -817,11 +967,20 @@ fn album_view(album: picker_store::AlbumWithCount) -> AlbumView {
 
 #[tauri::command]
 pub fn albums_list(state: State<'_, AppState>) -> CommandResult<Vec<AlbumView>> {
-    state
-        .library()
-        .list_albums()
-        .map(|albums| albums.into_iter().map(album_view).collect())
-        .map_err(error)
+    let library = state.library();
+    let now = unix_now();
+    let mut views = Vec::new();
+    for mut album in library.list_albums().map_err(error)? {
+        // Automatic albums store no items, so count by evaluating the condition.
+        if album.album.kind == picker_store::AlbumKind::Auto {
+            album.asset_count = library
+                .auto_album_page(album.album.id, now, 0, 1)
+                .map_err(error)?
+                .total;
+        }
+        views.push(album_view(album));
+    }
+    Ok(views)
 }
 
 #[tauri::command]

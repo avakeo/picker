@@ -158,6 +158,30 @@ export type AlbumView = { id: string, name: string, kind: string, assetCount: nu
 
 export type AlbumCreateRequest = { name: string, };
 
+export type AlbumQueryView = { tagsAll: Array<string>, tagsAny: Array<string>, tagsNone: Array<string>, includeSuggested: boolean, colors: Array<string>,
+/**
+ * `main` or `any`, as in `asset_filter`.
+ */
+colorScope: string, formats: Array<string>, minWidth: number | null, minHeight: number | null, capturedFrom: bigint | null, capturedTo: bigint | null,
+/**
+ * Only images added to the index within this many days.
+ */
+addedWithinDays: number | null,
+/**
+ * Only images without any confirmed tag.
+ */
+untagged: boolean,
+/**
+ * Only images with an unreviewed automatic tag.
+ */
+hasSuggested: boolean, };
+
+export type AutoAlbumCreateRequest = { name: string, query: AlbumQueryView, };
+
+export type AutoAlbumQueryRequest = { id: string, query: AlbumQueryView, };
+
+export type AutoAlbumPageRequest = { id: string, cursor: string | null, pageSize: number, };
+
 export type AlbumRenameRequest = { id: string, name: string, };
 
 export type AlbumAssetsRequest = { albumId: string, assetIds: Array<string>, };
@@ -227,6 +251,10 @@ export const COMMANDS = {
            albumRemoveAssets: "album_remove_assets",
            albumReorder: "album_reorder",
            albumAssets: "album_assets",
+           albumCreateAuto: "album_create_auto",
+           albumSetQuery: "album_set_query",
+           albumQuery: "album_query",
+           albumAutoPage: "album_auto_page",
            modelsList: "models_list",
            modelInstall: "model_install",
            modelActivate: "model_activate",

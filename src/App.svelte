@@ -11,6 +11,9 @@
     assetDetail,
     assignTag,
     createAlbum,
+    createAutoAlbum,
+    setAlbumQuery,
+    autoAlbumPage,
     autoTag,
     convertTagToCustom,
     confirmReview,
@@ -77,7 +80,14 @@
     type TagView
   } from "./lib/api";
 
-  type ViewMode = "all" | "filter" | "duplicates" | "album" | "semantic" | "similar";
+  type ViewMode =
+    | "all"
+    | "filter"
+    | "duplicates"
+    | "album"
+    | "autoAlbum"
+    | "semantic"
+    | "similar";
   type TagMode = "all" | "any" | "none";
 
   let roots: RootView[] = [];
@@ -101,6 +111,7 @@
   let installingModel = "";
   let currentAlbumId = "";
   let newAlbumName = "";
+  let newAutoAlbumName = "";
   let editingAlbumId = "";
   let editingAlbumName = "";
   let armedAlbumDeleteId = "";
@@ -311,6 +322,9 @@
       const items = await listDuplicates();
       return { items, nextCursor: null, total: items.length, totalIsExact: true };
     }
+    if (viewMode === "autoAlbum") {
+      return autoAlbumPage(currentAlbumId, cursor, 100);
+    }
     if (viewMode === "album") {
       const items = await listAlbumAssets(currentAlbumId);
       return { items, nextCursor: null, total: items.length, totalIsExact: true };
@@ -472,9 +486,49 @@
     await guard(() => refreshPage(true));
   }
 
+  // The current filter as a saved condition for an automatic album.
+  function currentQuery() {
+    const { tagsAll, tagsAny, tagsNone, includeSuggested, colors, colorScope, formats, minWidth, minHeight } =
+      filterArgs();
+    return {
+      tagsAll,
+      tagsAny,
+      tagsNone,
+      includeSuggested,
+      colors,
+      colorScope,
+      formats,
+      minWidth,
+      minHeight,
+      capturedFrom: null,
+      capturedTo: null,
+      addedWithinDays: null,
+      untagged: false,
+      hasSuggested: false
+    };
+  }
+
+  async function handleCreateAutoAlbum() {
+    const name = newAutoAlbumName.trim();
+    if (!name) return;
+    await guard(async () => {
+      await createAutoAlbum(name, currentQuery());
+      newAutoAlbumName = "";
+      await refreshAlbums();
+    });
+  }
+
+  async function updateCurrentAutoAlbum() {
+    if (viewMode !== "autoAlbum" || !currentAlbumId) return;
+    await guard(async () => {
+      await setAlbumQuery(currentAlbumId, currentQuery());
+      await Promise.all([refreshAlbums(), refreshPage(true)]);
+    });
+  }
+
   async function showAlbum(album: AlbumView) {
     currentAlbumId = album.id;
-    viewMode = "album";
+    viewMode = album.kind === "auto" ? "autoAlbum" : "album";
     clearSelection();
     await guard(() => refreshPage(true));
   }
@@ -933,9 +987,11 @@
               <button type="button" onclick={() => (editingAlbumId = "")}>取消</button>
             {:else}
               <button type="button" class="album-open" onclick={() => void showAlbum(album)}>
-                {album.name} ({album.assetCount})
+                {album.kind === "auto" ? "[自動] " : ""}{album.name} ({album.assetCount})
               </button>
-              <button type="button" title="選択中の画像を追加" disabled={busy} onclick={() => void addSelectionToAlbum(album.id)}>＋</button>
+              {#if album.kind !== "auto"}
+                <button type="button" title="選択中の画像を追加" disabled={busy} onclick={() => void addSelectionToAlbum(album.id)}>＋</button>
+              {/if}
               <button type="button" onclick={() => { editingAlbumId = album.id; editingAlbumName = album.name; }}>改名</button>
               <button type="button" class:danger={armedAlbumDeleteId === album.id} disabled={busy} onclick={() => void handleDeleteAlbum(album.id)}>
                 {armedAlbumDeleteId === album.id ? "削除?" : "削除"}
@@ -1026,6 +1082,16 @@
         <button type="button" disabled={busy} onclick={() => void clearFilter()}>解除</button>
         <button type="button" disabled={busy} onclick={() => void showDuplicates()}>重複</button>
       </div>
+
+      <form class="inline" onsubmit={(event) => { event.preventDefault(); void handleCreateAutoAlbum(); }}>
+        <input bind:value={newAutoAlbumName} placeholder="この条件で自動アルバム" aria-label="自動アルバム名" />
+        <button type="submit" disabled={busy}>保存</button>
+      </form>
+      {#if viewMode === "autoAlbum"}
+        <button type="button" disabled={busy} onclick={() => void updateCurrentAutoAlbum()}>
+          表示中の自動アルバムの条件をこの条件で更新
+        </button>
+      {/if}
 
     </section>
 

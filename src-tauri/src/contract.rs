@@ -145,6 +145,10 @@ pub fn generated_typescript() -> String {
         ColorSetRequest::decl(&config),
         AlbumView::decl(&config),
         AlbumCreateRequest::decl(&config),
+        AlbumQueryView::decl(&config),
+        AutoAlbumCreateRequest::decl(&config),
+        AutoAlbumQueryRequest::decl(&config),
+        AutoAlbumPageRequest::decl(&config),
         AlbumRenameRequest::decl(&config),
         AlbumAssetsRequest::decl(&config),
         AlbumReorderRequest::decl(&config),
@@ -218,6 +222,10 @@ pub fn generated_typescript() -> String {
            albumRemoveAssets: \"album_remove_assets\",
            albumReorder: \"album_reorder\",
            albumAssets: \"album_assets\",
+           albumCreateAuto: \"album_create_auto\",
+           albumSetQuery: \"album_set_query\",
+           albumQuery: \"album_query\",
+           albumAutoPage: \"album_auto_page\",
            modelsList: \"models_list\",
            modelInstall: \"model_install\",
            modelActivate: \"model_activate\",
@@ -689,6 +697,59 @@ pub struct AlbumView {
     pub name: String,
     pub kind: String,
     pub asset_count: u32,
+}
+
+/// A saved condition of an automatic album (ui-contract 2.6 and 9.5 of the design).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AlbumQueryView {
+    pub tags_all: Vec<String>,
+    pub tags_any: Vec<String>,
+    pub tags_none: Vec<String>,
+    pub include_suggested: bool,
+    pub colors: Vec<String>,
+    /// `main` or `any`, as in `asset_filter`.
+    pub color_scope: String,
+    pub formats: Vec<String>,
+    pub min_width: Option<u32>,
+    pub min_height: Option<u32>,
+    pub captured_from: Option<i64>,
+    pub captured_to: Option<i64>,
+    /// Only images added to the index within this many days.
+    pub added_within_days: Option<u32>,
+    /// Only images without any confirmed tag.
+    pub untagged: bool,
+    /// Only images with an unreviewed automatic tag.
+    pub has_suggested: bool,
+}
+
+/// Request for `album_create_auto`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AutoAlbumCreateRequest {
+    pub name: String,
+    pub query: AlbumQueryView,
+}
+
+/// Request for `album_set_query`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AutoAlbumQueryRequest {
+    pub id: String,
+    pub query: AlbumQueryView,
+}
+
+/// Request for `album_auto_page`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(rename_all = "camelCase")]
+pub struct AutoAlbumPageRequest {
+    pub id: String,
+    pub cursor: Option<String>,
+    pub page_size: u32,
 }
 
 /// Request for `album_create`.
