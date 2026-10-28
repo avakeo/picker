@@ -539,3 +539,119 @@ fn pool_runs_model_stages_after_the_embedder_arrives() {
     assert!(wait_until(Duration::from_secs(20), || embedded() == 4));
     pool.stop();
 }
+
+/// A constant embedder whose version can be chosen, to simulate a model
+/// update.
+struct VersionedEmbedder(&'static str);
+
+impl picker_ml::Embedder for VersionedEmbedder {
+    fn embed_image(
+        &self,
+        _path: &std::path::Path,
+    ) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        Ok(vec![0.0, 1.0])
+    }
+
+    fn embed_text(&self, _text: &str) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        Ok(vec![0.0, 1.0])
+    }
+
+    fn dimensions(&self) -> usize {
+        2
+    }
+
+    fn model_id(&self) -> &str {
+        "constant"
+    }
+
+    fn model_version(&self) -> &str {
+        self.0
+    }
+}
+
+fn fully_processed(count: u8) -> Fixture {
+    let fixture = Fixture::with_images(count);
+    fixture.library.run_queued_image_jobs().expect("images");
+    fixture.library.set_worker_embedder(Some(embedder()));
+    fixture.library.run_queued_ml_jobs().expect("ml");
+    fixture
+}
+
+fn set_version(library: &Library, asset_id: i64, stage: Stage, version: &str) {
+    library
+        .store()
+        .stage_states()
+        .upsert(
+            StageTarget::Asset(asset_id),
+            stage,
+            StageStatus::Succeeded,
+            version,
+            None,
+        )
+        .expect("state");
+}
+
+#[test]
+fn an_outdated_image_stage_is_redone_without_its_independent_stages() {
+    let fixture = fully_processed(2);
+    let library = &fixture.library;
+    let outdated = fixture.asset_ids()[0];
+    set_version(library, outdated, Stage::Thumbnail, "thumbnail-v0");
+
+    assert_eq!(library.requeue_outdated_stages().expect("requeue"), 1);
+    assert_eq!(library.run_queued_image_jobs().expect("images"), 1);
+    assert_eq!(
+        library
+            .store()
+            .stage_states()
+            .get(StageTarget::Asset(outdated), Stage::Thumbnail)
+            .expect("state")
+            .expect("thumbnail")
+            .version,
+        crate::library::IMAGE_STAGE_VERSION
+    );
+    // The embedding reads the original file, so nothing downstream runs.
+    assert_eq!(library.run_queued_ml_jobs().expect("ml"), 0);
+}
+
+#[test]
+fn a_new_model_version_redoes_embeddings_and_their_downstream_stages_only() {
+    let fixture = fully_processed(2);
+    let library = &fixture.library;
+    library.set_worker_embedder(Some(Arc::new(VersionedEmbedder("v2"))));
+
+    assert_eq!(library.requeue_outdated_stages().expect("requeue"), 2);
+    assert_eq!(library.run_queued_image_jobs().expect("images"), 0);
+    // Two embeddings, then auto-tag and custom suggestions for each.
+    assert_eq!(library.run_queued_ml_jobs().expect("ml"), 6);
+    for asset_id in fixture.asset_ids() {
+        assert!(library
+            .store()
+            .embeddings()
+            .get(asset_id, "constant", "v2")
+            .expect("embedding")
+            .is_some());
+    }
+}
+
+#[test]
+fn an_outdated_auto_tag_stage_is_redone_alone() {
+    let fixture = fully_processed(2);
+    let library = &fixture.library;
+    for asset_id in fixture.asset_ids() {
+        set_version(library, asset_id, Stage::AutoTag, "zero-shot-v0");
+    }
+    assert_eq!(library.requeue_outdated_stages().expect("requeue"), 2);
+    assert_eq!(library.run_queued_image_jobs().expect("images"), 0);
+    assert_eq!(library.run_queued_ml_jobs().expect("ml"), 2);
+    assert_eq!(library.requeue_outdated_stages().expect("current"), 0);
+}
+
+#[test]
+fn current_results_queue_nothing_at_startup() {
+    let fixture = fully_processed(3);
+    assert_eq!(
+        fixture.library.requeue_outdated_stages().expect("requeue"),
+        0
+    );
+}

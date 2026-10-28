@@ -195,10 +195,14 @@ impl Library {
                     IMAGE_STAGE_VERSION,
                     None,
                 )?;
-                // Model stages wait in the queue until a model is set.
-                self.store()
-                    .jobs()
-                    .enqueue(target, Stage::Embedding, job.priority, 3)?;
+                // The embedding reads the original file, not the thumbnail,
+                // so reprocessing an image does not redo it. New assets wait
+                // in the queue until a model is set.
+                if !self.stage_succeeded(asset_id, Stage::Embedding)? {
+                    self.store()
+                        .jobs()
+                        .enqueue(target, Stage::Embedding, job.priority, 3)?;
+                }
                 self.store().jobs().mark_succeeded(job.id)
             }
             Err(error) => {
@@ -223,6 +227,29 @@ impl Library {
             asset_id: Some(asset_id),
             status,
         }))
+    }
+
+    pub(crate) fn stage_succeeded(&self, asset_id: i64, stage: Stage) -> Result<bool> {
+        Ok(self
+            .store()
+            .stage_states()
+            .get(StageTarget::Asset(asset_id), stage)?
+            .is_some_and(|state| state.status == StageStatus::Succeeded))
+    }
+
+    /// Queues the work whose recorded version is older than the running
+    /// code or model: an outdated stage and the stages that read its output.
+    pub fn requeue_outdated_stages(&self) -> Result<usize> {
+        let jobs = self.store().jobs();
+        Ok(
+            jobs.enqueue_outdated(Stage::Thumbnail, IMAGE_STAGE_VERSION)?
+                + jobs.enqueue_outdated(Stage::AutoTag, crate::library::AUTO_TAG_STAGE_VERSION)?
+                + jobs.enqueue_outdated(
+                    Stage::CustomSuggest,
+                    crate::ml_jobs::CUSTOM_SUGGEST_STAGE_VERSION,
+                )?
+                + self.enqueue_missing_embeddings()?,
+        )
     }
 
     /// Runs image jobs on this thread until none is waiting.
@@ -360,6 +387,7 @@ impl WorkerPool {
     ) -> Result<Self> {
         let supervisor = Library::open(&config.database, &config.cache_root)?;
         supervisor.store().jobs().recover_running()?;
+        supervisor.requeue_outdated_stages()?;
         let control = Arc::new(Control {
             stop: AtomicBool::new(false),
             active: AtomicU32::new(0),

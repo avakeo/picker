@@ -690,6 +690,23 @@ impl<'connection> JobRepository<'connection> {
         )?)
     }
 
+    /// Queues a job of `stage` for every asset whose recorded state of that
+    /// stage has a version other than `current`, unless one is waiting.
+    /// Returns the number of jobs added.
+    pub fn enqueue_outdated(&self, stage: Stage, current: &str) -> Result<usize> {
+        validate_nonempty("version", current)?;
+        Ok(self.connection.execute(
+            "INSERT INTO jobs (asset_id, stage, priority, max_attempts)
+             SELECT s.asset_id, s.stage, 0, 3 FROM stage_states s
+             WHERE s.stage = ?1 AND s.asset_id IS NOT NULL AND s.version != ?2
+               AND NOT EXISTS (
+                     SELECT 1 FROM jobs j
+                     WHERE j.asset_id = s.asset_id AND j.stage = s.stage
+                       AND j.status IN ('pending', 'paused'))",
+            params![stage.as_str(), current],
+        )?)
+    }
+
     /// Claims the highest-priority pending job of any of `stages`.
     ///
     /// Selection and claim run in one statement, so workers on separate

@@ -656,8 +656,18 @@ impl Library {
         Ok(queued)
     }
 
+    /// Whether an asset has current image results. An asset processed before
+    /// stage states were recorded counts as current.
     pub(crate) fn is_image_processed(&self, asset_id: i64) -> Result<bool> {
-        Ok(self.store.assets().get(asset_id)?.perceptual_hash.is_some()
+        let outdated = self
+            .store
+            .stage_states()
+            .get(StageTarget::Asset(asset_id), Stage::Thumbnail)?
+            .is_some_and(|state| {
+                state.status == StageStatus::Succeeded && state.version != IMAGE_STAGE_VERSION
+            });
+        Ok(!outdated
+            && self.store.assets().get(asset_id)?.perceptual_hash.is_some()
             && self.thumbnail_path(asset_id, ThumbnailSize::Grid).is_file()
             && self
                 .thumbnail_path(asset_id, ThumbnailSize::Detail)
@@ -1414,7 +1424,9 @@ impl Library {
 
     /// Recomputes prototype (or tag-name) suggestions for one custom tag.
     pub fn suggest_custom_tag(&self, tag_id: i64, limit: u32) -> Result<usize> {
-        const STAGE_VERSION: &str = "prototype-v1";
+        // Shares the per-asset version so a later version check does not
+        // queue these assets again.
+        const STAGE_VERSION: &str = crate::ml_jobs::CUSTOM_SUGGEST_STAGE_VERSION;
         let embedder = self
             .embedder
             .lock()
@@ -1537,7 +1549,9 @@ impl Library {
 
     /// Trains the stage-B logistic classifier and refreshes its suggestions.
     pub fn train_custom_tag(&self, tag_id: i64) -> Result<usize> {
-        const STAGE_VERSION: &str = "logistic-v1";
+        // Shares the per-asset version so a later version check does not
+        // queue these assets again.
+        const STAGE_VERSION: &str = crate::ml_jobs::CUSTOM_SUGGEST_STAGE_VERSION;
         let tag = self.store.tags().get(tag_id)?;
         if tag.namespace != "custom" {
             return Err(LibraryError::InvalidInput(

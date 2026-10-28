@@ -679,3 +679,36 @@ fn disconnected_roots_go_offline_without_losing_files() -> Result<()> {
     assert!(store.roots().set_status(999, RootStatus::Online).is_err());
     Ok(())
 }
+
+#[test]
+fn outdated_stage_versions_are_queued_once() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let old = store.assets().insert(&asset(1))?;
+    let current = store.assets().insert(&asset(2))?;
+    for (asset_id, version) in [(old.id, "v1"), (current.id, "v2")] {
+        store.stage_states().upsert(
+            StageTarget::Asset(asset_id),
+            Stage::AutoTag,
+            StageStatus::Succeeded,
+            version,
+            None,
+        )?;
+    }
+    store.stage_states().upsert(
+        StageTarget::Asset(old.id),
+        Stage::Thumbnail,
+        StageStatus::Succeeded,
+        "v1",
+        None,
+    )?;
+    assert_eq!(store.jobs().enqueue_outdated(Stage::AutoTag, "v2")?, 1);
+    assert_eq!(store.jobs().enqueue_outdated(Stage::AutoTag, "v2")?, 0);
+    let job = store.jobs().dequeue(None)?.expect("job");
+    assert_eq!(
+        (job.target, job.stage),
+        (StageTarget::Asset(old.id), Stage::AutoTag)
+    );
+    assert!(store.jobs().dequeue(None)?.is_none());
+    assert!(store.jobs().enqueue_outdated(Stage::AutoTag, "").is_err());
+    Ok(())
+}

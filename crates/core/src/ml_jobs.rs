@@ -38,8 +38,12 @@ impl Library {
                 status: job.status,
             }));
         };
+        // Whether downstream stages must run again after this job.
+        let mut redo_downstream = false;
         let outcome = match job.stage {
-            Stage::Embedding => self.embed_asset(embedder.as_ref(), asset_id),
+            Stage::Embedding => self
+                .embed_asset(embedder.as_ref(), asset_id)
+                .map(|computed| redo_downstream = computed),
             Stage::AutoTag => self.auto_tag_asset(asset_id).map(|_| ()),
             Stage::CustomSuggest => self
                 .suggest_custom_for_asset(embedder.as_ref(), asset_id)
@@ -52,8 +56,12 @@ impl Library {
         let finished = match &outcome {
             Ok(()) => {
                 if job.stage == Stage::Embedding {
-                    // Downstream stages read the new embedding.
+                    // Downstream stages read the embedding: redo them for a
+                    // new one, and run the ones that never succeeded.
                     for stage in [Stage::AutoTag, Stage::CustomSuggest] {
+                        if !redo_downstream && self.stage_succeeded(asset_id, stage)? {
+                            continue;
+                        }
                         self.store().jobs().enqueue(
                             StageTarget::Asset(asset_id),
                             stage,
@@ -108,8 +116,11 @@ impl Library {
             .enqueue_missing_embeddings(embedder.model_id(), embedder.model_version())?)
     }
 
-    fn embed_asset(&self, embedder: &dyn Embedder, asset_id: i64) -> Result<()> {
+    /// Stores the embedding of an asset. Returns whether a new embedding was
+    /// computed.
+    fn embed_asset(&self, embedder: &dyn Embedder, asset_id: i64) -> Result<bool> {
         let (model_id, model_version) = (embedder.model_id(), embedder.model_version());
+        let mut computed = false;
         if self
             .store()
             .embeddings()
@@ -118,7 +129,7 @@ impl Library {
         {
             let Some(source) = self.present_source(asset_id)? else {
                 // The file went missing; a later scan queues it again.
-                return Ok(());
+                return Ok(false);
             };
             let vector = embedder
                 .embed_image(&source)
@@ -126,6 +137,7 @@ impl Library {
             self.store()
                 .embeddings()
                 .upsert(asset_id, model_id, model_version, &vector)?;
+            computed = true;
         }
         self.store().stage_states().upsert(
             StageTarget::Asset(asset_id),
@@ -134,7 +146,7 @@ impl Library {
             &stage_version(embedder, Stage::Embedding),
             None,
         )?;
-        Ok(())
+        Ok(computed)
     }
 
     /// Scores one asset against every custom tag and keeps a suggestion
