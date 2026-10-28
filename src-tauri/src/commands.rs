@@ -34,6 +34,7 @@ pub struct AppState {
     library: Mutex<Library>,
     models: Arc<ModelRegistry>,
     workers: Mutex<Option<picker_core::WorkerPool>>,
+    watch: Mutex<Option<picker_core::WatchService>>,
 }
 
 impl AppState {
@@ -49,6 +50,27 @@ impl AppState {
             library: Mutex::new(library),
             models: Arc::new(models),
             workers: Mutex::new(None),
+            watch: Mutex::new(None),
+        }
+    }
+
+    /// Keeps the folder watcher alive for the lifetime of the app.
+    pub fn set_watch(&self, service: picker_core::WatchService) {
+        *self
+            .watch
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(service);
+    }
+
+    /// Tells the folder watcher that the registered roots changed.
+    fn refresh_watch(&self) {
+        if let Some(service) = self
+            .watch
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            service.refresh();
         }
     }
 
@@ -305,10 +327,12 @@ pub fn roots_list(state: State<'_, AppState>) -> CommandResult<Vec<RootView>> {
 
 #[tauri::command]
 pub fn root_add(state: State<'_, AppState>, request: RootAddRequest) -> CommandResult<RootView> {
-    let library = state.library();
-    let root = library
+    let root = state
+        .library()
         .add_root(&request.path, &request.display_name)
         .map_err(error)?;
+    // The watcher scans the new root and keeps watching it.
+    state.refresh_watch();
     Ok(root_view(picker_core::RootSummary {
         root,
         image_count: 0,
@@ -318,7 +342,9 @@ pub fn root_add(state: State<'_, AppState>, request: RootAddRequest) -> CommandR
 #[tauri::command]
 pub fn root_remove(state: State<'_, AppState>, request: IdRequest) -> CommandResult<bool> {
     let id = parse_id(&request.id)?;
-    state.library().remove_root(id).map_err(error)
+    let removed = state.library().remove_root(id).map_err(error)?;
+    state.refresh_watch();
+    Ok(removed)
 }
 
 #[tauri::command]
@@ -331,6 +357,7 @@ pub fn root_set_enabled(
         .library()
         .set_root_enabled(id, request.enabled)
         .map_err(error)?;
+    state.refresh_watch();
     Ok(root_view(picker_core::RootSummary {
         root,
         image_count: 0,

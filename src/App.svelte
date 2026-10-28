@@ -384,10 +384,10 @@
 
   let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Workers finish thumbnails in the background; reload the items already
-  // shown, keeping the scroll position, so new thumbnails appear.
+  // Workers finish thumbnails and the folder watcher adds files in the
+  // background; reload the items already shown, keeping the scroll position.
   function scheduleThumbnailReload() {
-    if (reloadTimer || !assets.some((asset) => asset.thumbnailState !== "ready")) return;
+    if (reloadTimer) return;
     reloadTimer = setTimeout(() => {
       reloadTimer = null;
       void guard(reloadLoadedAssets);
@@ -917,6 +917,9 @@
     void refreshAll();
     const unlisten = listen("index-progress-changed", () => {
       void refreshStatus();
+      // The folder watcher also reports here: roots can go offline and
+      // files can appear without a rescan from the UI.
+      void guard(refreshRoots);
       scheduleThumbnailReload();
     });
     const unlistenModel = listen<ModelProgressEvent>("model-progress", (event) => {

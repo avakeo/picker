@@ -189,6 +189,14 @@ pub fn run() {
                 Ok(pool) => app.state::<commands::AppState>().set_workers(pool),
                 Err(error) => eprintln!("background workers unavailable: {error}"),
             }
+            let handle = app.handle().clone();
+            match picker_core::WatchService::start(
+                picker_core::WatchConfig::new(&database, &cache),
+                std::sync::Arc::new(move || commands::emit_index_progress(&handle)),
+            ) {
+                Ok(service) => app.state::<commands::AppState>().set_watch(service),
+                Err(error) => eprintln!("folder watching unavailable: {error}"),
+            }
             // Loaded after the workers start, so they receive the model too.
             if let Err(error) = app.state::<commands::AppState>().reload_embedder() {
                 eprintln!("embedding model unavailable: {error}");
