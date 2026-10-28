@@ -89,6 +89,39 @@ impl<'connection> FeedbackRepository<'connection> {
             })
     }
 
+    /// Inserts an event restored from an export, keeping its original time.
+    /// An identical event already present is not inserted again.
+    pub fn restore(&self, event: &FeedbackEvent) -> Result<bool> {
+        let inserted = self.connection.execute(
+            "INSERT INTO feedback_events
+                (asset_id, tag_id, action, confidence, previous_state, previous_source,
+                 previous_confidence, previous_model_id, previous_model_version, created_at)
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM feedback_events
+                 WHERE asset_id = ?1 AND tag_id IS ?2 AND action = ?3 AND created_at = ?10
+             )",
+            params![
+                event.asset_id,
+                event.tag_id,
+                event.action.as_str(),
+                event.confidence,
+                event.previous_state.map(state_to_text),
+                event.previous_source.map(AssignmentSource::as_str),
+                event.previous_confidence,
+                event.previous_model_id,
+                event.previous_model_version,
+                event.created_at,
+            ],
+        )?;
+        Ok(inserted > 0)
+    }
+
+    /// Returns every event in recording order.
+    pub fn list_all(&self) -> Result<Vec<FeedbackEvent>> {
+        self.list_since(0, u32::MAX)
+    }
+
     pub fn get(&self, id: i64) -> Result<Option<FeedbackEvent>> {
         self.connection
             .query_row(

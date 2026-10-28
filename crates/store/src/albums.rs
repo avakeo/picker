@@ -48,6 +48,19 @@ impl<'connection> AlbumRepository<'connection> {
         self.get(self.connection.last_insert_rowid())
     }
 
+    /// Returns the first manual album with this name, if any.
+    pub fn find_manual_by_name(&self, name: &str) -> Result<Option<Album>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT id, name, kind, query, sort_order FROM albums
+                 WHERE kind = 'manual' AND name = ?1 ORDER BY id LIMIT 1",
+                [name.trim()],
+                album_from_row,
+            )
+            .optional()?)
+    }
+
     pub fn get(&self, id: i64) -> Result<Album> {
         Ok(self.connection.query_row(
             "SELECT id, name, kind, query, sort_order FROM albums WHERE id = ?1",
@@ -110,6 +123,24 @@ impl<'connection> AlbumRepository<'connection> {
         }
         transaction.commit()?;
         Ok(added)
+    }
+
+    /// Inserts one item at an explicit position, keeping an existing item as is.
+    /// Used to restore exported order when assets arrive in any order.
+    pub fn insert_at(&self, album_id: i64, asset_id: i64, position: i64) -> Result<bool> {
+        self.ensure_manual(album_id)?;
+        if position < 0 {
+            return Err(StoreError::InvalidInput {
+                field: "album position",
+                reason: "must not be negative".to_owned(),
+            });
+        }
+        let inserted = self.connection.execute(
+            "INSERT INTO album_items (album_id, asset_id, position) VALUES (?1, ?2, ?3)
+             ON CONFLICT (album_id, asset_id) DO NOTHING",
+            params![album_id, asset_id, position],
+        )?;
+        Ok(inserted > 0)
     }
 
     pub fn remove_assets(&self, album_id: i64, asset_ids: &[i64]) -> Result<usize> {

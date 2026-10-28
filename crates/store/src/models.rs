@@ -339,6 +339,12 @@ pub struct AssetFilter {
     pub captured_to: Option<i64>,
 }
 
+string_enum!(PendingItemKind {
+    Color => "color",
+    AlbumItem => "album_item",
+    Feedback => "feedback",
+});
+
 string_enum!(ColorSource {
     Auto => "auto",
     User => "user",

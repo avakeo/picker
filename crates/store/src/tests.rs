@@ -61,6 +61,7 @@ fn empty_database_migrates_to_latest_schema_in_wal_mode() -> Result<()> {
         "feedback_events".to_owned(),
         "jobs".to_owned(),
         "locations".to_owned(),
+        "pending_portable_items".to_owned(),
         "pending_tag_assignments".to_owned(),
         "roots".to_owned(),
         "schema_migrations".to_owned(),

@@ -20,6 +20,8 @@ use picker_store::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::portable::{PortableAlbum, PortableColors, PortableFeedback, PortableRoot};
+
 /// Portable representation of the non-regenerable tag data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -29,7 +31,19 @@ pub struct PortableExport {
     pub aliases: Vec<PortableAlias>,
     pub classifiers: Vec<PortableClassifier>,
     pub assignments: Vec<PortableAssignmentRecord>,
+    /// Added in version 2. Version 1 files have none of the fields below.
+    #[serde(default)]
+    pub roots: Vec<PortableRoot>,
+    #[serde(default)]
+    pub albums: Vec<PortableAlbum>,
+    #[serde(default)]
+    pub user_colors: Vec<PortableColors>,
+    #[serde(default)]
+    pub feedback_events: Vec<PortableFeedback>,
 }
+
+/// Current version of [`PortableExport`]. Version 1 is still accepted.
+pub const PORTABLE_EXPORT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -75,11 +89,11 @@ pub struct PortableAssignmentRecord {
     pub model_version: Option<String>,
 }
 
-fn hash_hex(bytes: &[u8]) -> String {
+pub(crate) fn hash_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn parse_hash(value: &str) -> Result<Vec<u8>> {
+pub(crate) fn parse_hash(value: &str) -> Result<Vec<u8>> {
     if value.len() != 64 {
         return Err(LibraryError::InvalidInput("invalid BLAKE3 hash".to_owned()));
     }
@@ -364,6 +378,7 @@ impl Library {
                 self.store
                     .portable()
                     .apply_for_asset(asset.id, &asset.blake3_hash)?;
+                self.apply_pending_items(asset.id, &asset.blake3_hash)?;
             }
         }
         Ok(report)
@@ -473,12 +488,17 @@ impl Library {
                 model_version: assignment.model_version,
             })
             .collect();
+        let extras = self.export_extras()?;
         let export = PortableExport {
-            version: 1,
+            version: PORTABLE_EXPORT_VERSION,
             tags: portable_tags,
             aliases,
             classifiers,
             assignments,
+            roots: extras.roots,
+            albums: extras.albums,
+            user_colors: extras.colors,
+            feedback_events: extras.feedback,
         };
         let json = serde_json::to_vec_pretty(&export)
             .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
@@ -491,7 +511,7 @@ impl Library {
         let bytes = fs::read(path)?;
         let export: PortableExport = serde_json::from_slice(&bytes)
             .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
-        if export.version != 1 {
+        if !(1..=PORTABLE_EXPORT_VERSION).contains(&export.version) {
             return Err(LibraryError::InvalidInput(
                 "unsupported export version".to_owned(),
             ));
@@ -584,6 +604,12 @@ impl Library {
             imported += 1;
         }
         self.store.portable().apply_all()?;
+        self.import_extras(
+            &export.roots,
+            &export.albums,
+            &export.user_colors,
+            &export.feedback_events,
+        )?;
         Ok(imported)
     }
 

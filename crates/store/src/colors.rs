@@ -63,6 +63,16 @@ impl<'connection> ColorRepository<'connection> {
     }
 
     /// Returns whether the user has edited this asset's colors.
+    /// Returns the ids of assets whose colors the user has set.
+    pub fn manual_assets(&self) -> Result<Vec<i64>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT asset_id FROM asset_color_manual ORDER BY asset_id")?;
+        let rows = statement.query_map([], |row| row.get(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(StoreError::from)
+    }
+
     pub fn is_manual(&self, asset_id: i64) -> Result<bool> {
         Ok(self.connection.query_row(
             "SELECT EXISTS(SELECT 1 FROM asset_color_manual WHERE asset_id = ?1)",

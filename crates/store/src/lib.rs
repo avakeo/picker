@@ -24,7 +24,7 @@ pub use error::{Result, StoreError};
 pub use feedback::FeedbackRepository;
 pub use migrations::{LATEST_SCHEMA_VERSION, MIGRATIONS};
 pub use models::*;
-pub use portable::{PortableAssignment, PortableRepository};
+pub use portable::{PendingItem, PortableAssignment, PortableRepository};
 pub use repositories::*;
 use rusqlite::{Connection, OpenFlags};
 pub use tags::*;
@@ -60,6 +60,19 @@ impl Store {
         configure(&connection, false)?;
         migrations::migrate(&connection)?;
         Ok(Self { connection })
+    }
+
+    /// Writes a consistent copy of the database to a new file.
+    pub fn snapshot_to(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path.as_ref();
+        let Some(path) = path.to_str() else {
+            return Err(StoreError::InvalidInput {
+                field: "snapshot path",
+                reason: "must be valid UTF-8".to_owned(),
+            });
+        };
+        self.connection.execute("VACUUM INTO ?1", [path])?;
+        Ok(())
     }
 
     pub fn schema_version(&self) -> Result<u32> {

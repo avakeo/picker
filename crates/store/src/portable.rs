@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::{AssignmentSource, Result, StoreError, TagState};
+use crate::{AssignmentSource, PendingItemKind, Result, StoreError, TagState};
 
 /// One decided assignment keyed by the asset content hash.
 #[derive(Debug, Clone, PartialEq)]
@@ -13,6 +13,15 @@ pub struct PortableAssignment {
     pub confidence: Option<f64>,
     pub model_id: Option<String>,
     pub model_version: Option<String>,
+}
+
+/// Imported data other than tag assignments, waiting for its asset to be scanned.
+/// The payload is the exported JSON record, kept as is so a re-export can copy it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingItem {
+    pub blake3_hash: Vec<u8>,
+    pub kind: PendingItemKind,
+    pub payload: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -181,5 +190,61 @@ impl<'connection> PortableRepository<'connection> {
                 field: "pending count",
                 value: "missing".to_owned(),
             })
+    }
+
+    pub fn stage_item(
+        &self,
+        blake3_hash: &[u8],
+        kind: PendingItemKind,
+        payload: &str,
+    ) -> Result<()> {
+        if blake3_hash.len() != 32 {
+            return Err(StoreError::InvalidInput {
+                field: "blake3_hash",
+                reason: "must be 32 bytes".to_owned(),
+            });
+        }
+        self.connection.execute(
+            "INSERT INTO pending_portable_items (blake3_hash, kind, payload) VALUES (?1, ?2, ?3)",
+            params![blake3_hash, kind.as_str(), payload],
+        )?;
+        Ok(())
+    }
+
+    /// Returns every pending item in insertion order.
+    pub fn pending_items(&self) -> Result<Vec<PendingItem>> {
+        self.items_where("1 = 1", [])
+    }
+
+    /// Removes and returns the pending items for one asset hash, in insertion order.
+    pub fn take_items(&self, blake3_hash: &[u8]) -> Result<Vec<PendingItem>> {
+        let items = self.items_where("blake3_hash = ?1", [blake3_hash])?;
+        self.connection.execute(
+            "DELETE FROM pending_portable_items WHERE blake3_hash = ?1",
+            [blake3_hash],
+        )?;
+        Ok(items)
+    }
+
+    fn items_where<P: rusqlite::Params>(
+        &self,
+        condition: &str,
+        values: P,
+    ) -> Result<Vec<PendingItem>> {
+        let sql = format!(
+            "SELECT blake3_hash, kind, payload FROM pending_portable_items
+             WHERE {condition} ORDER BY id"
+        );
+        let mut statement = self.connection.prepare(&sql)?;
+        let rows = statement.query_map(values, |row| {
+            let kind: String = row.get(1)?;
+            Ok(PendingItem {
+                blake3_hash: row.get(0)?,
+                kind: kind.parse().map_err(|_| rusqlite::Error::InvalidQuery)?,
+                payload: row.get(2)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(StoreError::from)
     }
 }

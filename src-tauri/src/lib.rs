@@ -162,6 +162,17 @@ pub fn run() {
             if let Err(error) = commands::configure_embedder(&mut library, &models) {
                 eprintln!("embedding model unavailable: {error}");
             }
+            // Keep one daily database snapshot for a week (design 6.3).
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .and_then(|elapsed| i64::try_from(elapsed.as_secs()).ok())
+                .unwrap_or(0);
+            if let Err(error) =
+                library.snapshot_if_due(&data_dir.join("snapshots"), now, 24 * 60 * 60, 7)
+            {
+                eprintln!("database snapshot failed: {error}");
+            }
             app.manage(commands::AppState::new(library, models));
             let _core = create_core();
             Ok(())

@@ -728,7 +728,8 @@ fn portable_export_restores_tags_after_rescan() {
     let cache2 = tempfile::tempdir().expect("cache2");
     let restored = Library::open_in_memory(cache2.path()).expect("library2");
     restored.import_portable(&export_path).expect("import");
-    let root = restored.add_root(media.path(), "root").expect("root");
+    // The import registers the exported root because the folder exists here.
+    let root = restored.list_roots().expect("roots")[0].root.clone();
     restored.scan_root(root.id).expect("scan");
     let restored_asset = asset_id_named(&restored, "one.png");
     let tags = restored.asset_detail(restored_asset).expect("detail").tags;
@@ -903,6 +904,219 @@ fn rescan_applies_staged_decision_over_suggestion() {
     assert_eq!(
         library.store().portable().pending_count().expect("pending"),
         0
+    );
+}
+
+fn read_json(path: &std::path::Path) -> serde_json::Value {
+    serde_json::from_str(&fs::read_to_string(path).expect("read")).expect("json")
+}
+
+/// A library with one root, a manual album, user colors, and feedback history.
+fn library_with_extras(media: &std::path::Path, cache: &std::path::Path) -> Library {
+    fs::write(media.join("one.png"), png_bytes(10)).expect("write");
+    fs::write(media.join("two.png"), png_bytes(60)).expect("write");
+    let library = Library::open_in_memory(cache).expect("library");
+    let root = library.add_root(media, "写真").expect("root");
+    library.scan_root(root.id).expect("scan");
+    let one = asset_id_named(&library, "one.png");
+    let two = asset_id_named(&library, "two.png");
+    let album = library.create_album("旅行").expect("album");
+    library
+        .add_assets_to_album(album.id, &[two, one])
+        .expect("album items");
+    library
+        .set_asset_colors(one, &[("#112233".to_owned(), 0.7)])
+        .expect("colors");
+    let tag = library
+        .create_tag("beach", "海辺", None, None)
+        .expect("tag");
+    library
+        .set_tag_on_assets(&[one], tag.id, picker_store::TagState::Confirmed)
+        .expect("confirm");
+    library
+}
+
+#[test]
+fn portable_export_restores_albums_colors_feedback_and_roots() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    let source = library_with_extras(media.path(), cache.path());
+    let export_dir = tempfile::tempdir().expect("export");
+    let first = export_dir.path().join("first.json");
+    let second = export_dir.path().join("second.json");
+    source.export_portable(&first).expect("export");
+    let exported = read_json(&first);
+    assert_eq!(exported["version"], crate::PORTABLE_EXPORT_VERSION);
+    assert!(!exported["feedbackEvents"]
+        .as_array()
+        .expect("feedback")
+        .is_empty());
+
+    let cache2 = tempfile::tempdir().expect("cache2");
+    let restored = Library::open_in_memory(cache2.path()).expect("library2");
+    restored.import_portable(&first).expect("import");
+
+    // Before the scan, a re-export keeps every staged record.
+    restored.export_portable(&second).expect("re-export");
+    let reexported = read_json(&second);
+    for field in ["albums", "userColors", "feedbackEvents", "roots"] {
+        assert_eq!(exported[field], reexported[field], "{field}");
+    }
+
+    let roots = restored.list_roots().expect("roots");
+    assert_eq!(roots.len(), 1);
+    restored.scan_root(roots[0].root.id).expect("scan");
+    let one = asset_id_named(&restored, "one.png");
+    let two = asset_id_named(&restored, "two.png");
+    let album = restored.list_albums().expect("albums")[0].album.clone();
+    assert_eq!(album.name, "旅行");
+    assert_eq!(
+        restored.album_asset_ids(album.id).expect("items"),
+        vec![two, one]
+    );
+    let colors = restored.store().colors().list(one).expect("colors");
+    assert_eq!(colors.len(), 1);
+    assert_eq!(colors[0].hex, "#112233");
+    assert_eq!(colors[0].source, picker_store::ColorSource::User);
+    assert_eq!(
+        restored
+            .store()
+            .feedback()
+            .list_all()
+            .expect("feedback")
+            .len(),
+        source
+            .store()
+            .feedback()
+            .list_all()
+            .expect("feedback")
+            .len()
+    );
+    assert!(restored
+        .store()
+        .portable()
+        .pending_items()
+        .expect("pending")
+        .is_empty());
+}
+
+#[test]
+fn portable_import_twice_does_not_duplicate_records() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    let library = library_with_extras(media.path(), cache.path());
+    let export_dir = tempfile::tempdir().expect("export");
+    let path = export_dir.path().join("decisions.json");
+    library.export_portable(&path).expect("export");
+    let events = library
+        .store()
+        .feedback()
+        .list_all()
+        .expect("feedback")
+        .len();
+    let album = library.list_albums().expect("albums")[0].album.clone();
+    let items = library.album_asset_ids(album.id).expect("items");
+
+    library.import_portable(&path).expect("import");
+    library.import_portable(&path).expect("import again");
+
+    assert_eq!(
+        library
+            .store()
+            .feedback()
+            .list_all()
+            .expect("feedback")
+            .len(),
+        events
+    );
+    assert_eq!(library.list_albums().expect("albums").len(), 1);
+    assert_eq!(library.album_asset_ids(album.id).expect("items"), items);
+    assert_eq!(library.list_roots().expect("roots").len(), 1);
+}
+
+#[test]
+fn portable_import_accepts_version_one_files() {
+    let cache = tempfile::tempdir().expect("cache");
+    let export_dir = tempfile::tempdir().expect("export");
+    let path = export_dir.path().join("v1.json");
+    fs::write(
+        &path,
+        r#"{"version":1,"tags":[],"aliases":[],"classifiers":[],"assignments":[]}"#,
+    )
+    .expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    assert_eq!(library.import_portable(&path).expect("import"), 0);
+}
+
+#[test]
+fn portable_import_rejects_bad_hashes_and_unknown_versions_without_writing() {
+    let cache = tempfile::tempdir().expect("cache");
+    let export_dir = tempfile::tempdir().expect("export");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let bad_hash = export_dir.path().join("bad-hash.json");
+    fs::write(
+        &bad_hash,
+        r#"{"version":2,"tags":[],"aliases":[],"classifiers":[],"assignments":[],
+            "albums":[{"name":"旅行","sortOrder":0,"items":["zz"]}]}"#,
+    )
+    .expect("write");
+    assert!(library.import_portable(&bad_hash).is_err());
+    assert!(library.list_albums().expect("albums").is_empty());
+
+    let future = export_dir.path().join("future.json");
+    fs::write(
+        &future,
+        r#"{"version":3,"tags":[],"aliases":[],"classifiers":[],"assignments":[]}"#,
+    )
+    .expect("write");
+    assert!(library.import_portable(&future).is_err());
+    assert!(library
+        .import_portable(&export_dir.path().join("missing.json"))
+        .is_err());
+}
+
+#[test]
+fn snapshots_are_written_when_due_and_rotated() {
+    let cache = tempfile::tempdir().expect("cache");
+    let snapshots = tempfile::tempdir().expect("snapshots");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let day = 24 * 60 * 60;
+    let first = library
+        .snapshot_if_due(snapshots.path(), 1_000, day, 2)
+        .expect("first");
+    assert!(first.as_ref().is_some_and(|path| path.is_file()));
+    assert!(library
+        .snapshot_if_due(snapshots.path(), 1_000 + day - 1, day, 2)
+        .expect("not due")
+        .is_none());
+    library
+        .snapshot_if_due(snapshots.path(), 1_000 + day, day, 2)
+        .expect("second");
+    library
+        .snapshot_if_due(snapshots.path(), 1_000 + 2 * day, day, 2)
+        .expect("third");
+    let mut names: Vec<String> = fs::read_dir(snapshots.path())
+        .expect("dir")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .into_string()
+                .expect("utf8")
+        })
+        .collect();
+    names.sort_by_key(|name| name.len());
+    assert_eq!(
+        names,
+        vec![
+            format!("library-{}.sqlite3", 1_000 + day),
+            format!("library-{}.sqlite3", 1_000 + 2 * day),
+        ]
+    );
+    let copy = picker_store::Store::open(snapshots.path().join(&names[1])).expect("open copy");
+    assert_eq!(
+        copy.schema_version().expect("version"),
+        picker_store::LATEST_SCHEMA_VERSION
     );
 }
 

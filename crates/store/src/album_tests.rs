@@ -163,3 +163,66 @@ fn album_validation_rejects_empty_names_and_automatic_edits() -> Result<()> {
     assert!(store.albums().rename(auto.id, "ok").is_ok());
     Ok(())
 }
+
+#[test]
+fn insert_at_keeps_explicit_order_and_rejects_bad_input() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let assets = seed_assets(&store, 3);
+    let album = store.albums().create("旅行", 0)?;
+    assert!(store.albums().insert_at(album.id, assets[2].id, 0)?);
+    assert!(store.albums().insert_at(album.id, assets[0].id, 2)?);
+    assert!(store.albums().insert_at(album.id, assets[1].id, 1)?);
+    assert!(!store.albums().insert_at(album.id, assets[1].id, 5)?);
+    let order: Vec<i64> = store
+        .albums()
+        .list_items(album.id)?
+        .into_iter()
+        .map(|item| item.asset_id)
+        .collect();
+    assert_eq!(order, vec![assets[2].id, assets[1].id, assets[0].id]);
+    assert!(store
+        .albums()
+        .insert_at(album.id, assets[0].id, -1)
+        .is_err());
+    assert!(store
+        .albums()
+        .insert_at(album.id + 99, assets[0].id, 0)
+        .is_err());
+    assert_eq!(
+        store
+            .albums()
+            .find_manual_by_name(" 旅行 ")?
+            .map(|found| found.id),
+        Some(album.id)
+    );
+    assert!(store.albums().find_manual_by_name("ない")?.is_none());
+    Ok(())
+}
+
+#[test]
+fn pending_items_are_taken_once_per_hash() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let hash = [7_u8; 32];
+    let other = [8_u8; 32];
+    store
+        .portable()
+        .stage_item(&hash, PendingItemKind::Color, r#"{"a":1}"#)?;
+    store
+        .portable()
+        .stage_item(&other, PendingItemKind::Feedback, r#"{"b":2}"#)?;
+    assert!(store
+        .portable()
+        .stage_item(&[1_u8; 4], PendingItemKind::Color, "{}")
+        .is_err());
+    assert!(store
+        .portable()
+        .stage_item(&hash, PendingItemKind::Color, "not json")
+        .is_err());
+    assert_eq!(store.portable().pending_items()?.len(), 2);
+    let taken = store.portable().take_items(&hash)?;
+    assert_eq!(taken.len(), 1);
+    assert_eq!(taken[0].kind, PendingItemKind::Color);
+    assert!(store.portable().take_items(&hash)?.is_empty());
+    assert_eq!(store.portable().pending_items()?.len(), 1);
+    Ok(())
+}
