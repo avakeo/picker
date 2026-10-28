@@ -140,3 +140,14 @@ cargo deny check advisories licenses bans sources
 ```
 
 `deny.toml` に許可ライセンス、依存ソース、複数バージョンの扱いを定義している。
+
+### SBOM とライセンス一覧
+
+依存を変えたら、`docs/sbom.cdx.json` と `docs/licenses.md` を作り直し、同じコミットに含める。アプリの「このアプリについて」は、この SBOM からライセンス一覧を表示する。
+
+```sh
+uv run scripts/generate-sbom.py
+uv run scripts/generate-sbom.py --check
+```
+
+2つ目のコマンドは CI でも実行され、ファイルが古いと失敗する。

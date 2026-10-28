@@ -57,6 +57,9 @@ jobs:
       - name: Check advisories, licenses, bans, and sources
         uses: EmbarkStudios/cargo-deny-action@v2
 
+      - name: Check that the SBOM and license list are current
+        run: python3 scripts/generate-sbom.py --check
+
   frontend:
     name: Frontend
     runs-on: macos-latest

@@ -1,7 +1,7 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:3c9dcbf0-ef29-5462-9912-b4d47777ef1a",
+  "serialNumber": "urn:uuid:20d1f95a-7795-5f08-966d-46f3bb8f790b",
   "version": 1,
   "metadata": {
     "component": {
@@ -2410,6 +2410,32 @@
     },
     {
       "type": "library",
+      "name": "inotify",
+      "version": "0.11.5",
+      "purl": "pkg:cargo/inotify@0.11.5",
+      "licenses": [
+        {
+          "license": {
+            "name": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "inotify-sys",
+      "version": "0.1.8",
+      "purl": "pkg:cargo/inotify-sys@0.1.8",
+      "licenses": [
+        {
+          "license": {
+            "name": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "ipnet",
       "version": "2.12.2",
       "purl": "pkg:cargo/ipnet@2.12.2",
@@ -2651,6 +2677,32 @@
         {
           "license": {
             "name": "MIT OR Apache-2.0"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "kqueue",
+      "version": "1.2.1",
+      "purl": "pkg:cargo/kqueue@1.2.1",
+      "licenses": [
+        {
+          "license": {
+            "name": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "kqueue-sys",
+      "version": "1.1.2",
+      "purl": "pkg:cargo/kqueue-sys@1.1.2",
+      "licenses": [
+        {
+          "license": {
+            "name": "MIT"
           }
         }
       ]
@@ -3060,6 +3112,32 @@
     },
     {
       "type": "library",
+      "name": "notify",
+      "version": "8.2.1",
+      "purl": "pkg:cargo/notify@8.2.1",
+      "licenses": [
+        {
+          "license": {
+            "name": "CC0-1.0"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "notify-types",
+      "version": "2.2.0",
+      "purl": "pkg:cargo/notify-types@2.2.0",
+      "licenses": [
+        {
+          "license": {
+            "name": "MIT OR Apache-2.0"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "num-complex",
       "version": "0.4.6",
       "purl": "pkg:cargo/num-complex@0.4.6",
@@ -3232,6 +3310,19 @@
       "name": "objc2-core-location",
       "version": "0.3.2",
       "purl": "pkg:cargo/objc2-core-location@0.3.2",
+      "licenses": [
+        {
+          "license": {
+            "name": "Zlib OR Apache-2.0 OR MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "objc2-core-services",
+      "version": "0.3.2",
+      "purl": "pkg:cargo/objc2-core-services@0.3.2",
       "licenses": [
         {
           "license": {

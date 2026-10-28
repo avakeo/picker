@@ -5,7 +5,7 @@
 `.github/workflows/ci.yml` は `main` または積み上げ元の `codex/T0-2` 向けの Pull Request と、`main` への push で、macOS runner 上に次の検査を実行する。
 
 - Rust: `fmt`、UI 契約の生成忘れ検査、`check`、`clippy`、`test`
-- Rust 依存: `cargo-deny` による advisory、license、ban、source 検査
+- Rust 依存: `cargo-deny` による advisory、license、ban、source 検査、`scripts/generate-sbom.py --check` による SBOM とライセンス一覧の古さの検査
 - フロントエンド: `npm ci`、型チェック、lint、build
 
 最後の `ci` ジョブは、Rust・依存検査・フロントエンドのいずれかが成功以外の場合に失敗する。GitHub の branch protection では、この `ci` ジョブを必須 status check に指定する。
