@@ -573,3 +573,61 @@ fn transparent_tiny_and_low_contrast_images_are_safe() {
     let merged = extract_colors(&image);
     assert!(!merged.is_empty() && merged.len() <= 2, "{merged:?}");
 }
+
+/// T1-6 on macOS: HEIC files decode through ImageIO, also when several with
+/// the same file name are decoded at once by parallel workers.
+#[cfg(target_os = "macos")]
+#[test]
+fn heic_decodes_through_imageio_in_parallel() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    let mut sources = Vec::new();
+    for (index, (width, height)) in [(64, 32), (40, 80), (50, 50), (90, 30)]
+        .into_iter()
+        .enumerate()
+    {
+        let folder = temporary.path().join(format!("folder-{index}"));
+        std::fs::create_dir_all(&folder).expect("folder");
+        let png = folder.join("source.png");
+        std::fs::write(&png, encode(&test_image(width, height), ImageFormat::Png)).expect("png");
+        // Every HEIC has the same file name, as photos from two cameras can.
+        let heic = folder.join("IMG_0001.HEIC");
+        let status = std::process::Command::new("sips")
+            .args(["-s", "format", "heic"])
+            .arg(&png)
+            .arg("--out")
+            .arg(&heic)
+            .output()
+            .expect("run sips");
+        assert!(status.status.success(), "sips could not write HEIC");
+        sources.push((heic, width, height));
+    }
+    let handles: Vec<_> = sources
+        .into_iter()
+        .map(|(heic, width, height)| {
+            std::thread::spawn(move || {
+                let decoded = PlatformDecoder
+                    .decode_file(&heic, ImageFormat::Heic, &DecodeLimits::default())
+                    .expect("decode heic");
+                assert_eq!((decoded.width, decoded.height), (width, height));
+            })
+        })
+        .collect();
+    for handle in handles {
+        handle.join().expect("decoder thread");
+    }
+
+    let broken = temporary.path().join("broken.heic");
+    std::fs::write(&broken, b"not a heic file").expect("broken");
+    assert!(PlatformDecoder
+        .decode_file(&broken, ImageFormat::Heic, &DecodeLimits::default())
+        .is_err());
+    let tiny = DecodeLimits {
+        max_file_bytes: 1,
+        ..DecodeLimits::default()
+    };
+    let first = temporary.path().join("folder-0/IMG_0001.HEIC");
+    assert!(matches!(
+        PlatformDecoder.decode_file(&first, ImageFormat::Heic, &tiny),
+        Err(ImagingError::TooLarge { .. })
+    ));
+}

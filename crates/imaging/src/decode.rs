@@ -127,12 +127,23 @@ impl Decoder for PlatformDecoder {
 
 #[cfg(target_os = "macos")]
 fn decode_heic_with_imageio(path: &Path, limits: &DecodeLimits) -> Result<DecodedImage> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    // Each call gets its own file: workers decode in parallel, and two
+    // sources in different folders can share a file name.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    // The limit applies to the source; the converted PNG can be larger.
+    let size = fs::metadata(path)?.len();
+    if size > limits.max_file_bytes {
+        return Err(ImagingError::TooLarge {
+            limit: "file size",
+            actual: size,
+        });
+    }
     let output = std::env::temp_dir().join(format!(
         "picker-imageio-{}-{}.png",
         std::process::id(),
-        path.file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("image")
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     let status = Command::new("sips")
         .args(["-s", "format", "png"])
