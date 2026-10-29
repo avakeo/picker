@@ -1277,7 +1277,12 @@
       {#if status}
         <div class="stages">
           {#each status.stages.filter((stage) => stage.completed + stage.pending + stage.failed > 0) as stage (stage.stage)}
-            <span>{stage.stage}: {stage.completed} 完了 / {stage.pending} 待ち / {stage.failed} 失敗</span>
+            {@const done = stage.completed + stage.failed}
+            {@const total = done + stage.pending}
+            <span class="stage">
+              <progress value={done} max={total} aria-label={`${stage.stage} の進み具合`}></progress>
+              {stage.stage}: {Math.floor((done / total) * 100)}% ({stage.completed} 完了 / {stage.pending} 待ち / {stage.failed} 失敗)
+            </span>
           {/each}
         </div>
 
@@ -1533,6 +1538,8 @@
   dd { margin: 0; overflow-wrap: anywhere; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border: 1px solid #4d6a45; border-radius: 12px; background: #24301f; font-size: 12px; }
+  .stage { display: flex; align-items: center; gap: 6px; }
+  .stage progress { width: 120px; }
   .chip.suggested { border-color: #6a6040; background: #2f2a1d; }
   .chip em { color: #a3a3a3; font-size: 10px; }
   .chip button { padding: 0 4px; border: 0; background: none; }
