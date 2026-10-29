@@ -11,3 +11,8 @@ members = [
     "crates/sidecar",
 ]
 resolver = "2"
+
+[profile.dev.package."*"]
+# Image decoding and resizing in dependencies is many times slower without
+# optimization; workspace crates stay unoptimized for quick rebuilds.
+opt-level = 3

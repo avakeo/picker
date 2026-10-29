@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    decode::{thumbnail_path, DecodedImage, Decoder},
+    decode::{fit_within, thumbnail_path, DecodedImage, Decoder},
     format::ImageFormat,
     limits::DecodeLimits,
     ImagingError, Result,
@@ -66,10 +66,17 @@ impl ThumbnailCache {
         format: ImageFormat,
         limits: &DecodeLimits,
     ) -> Result<Vec<PathBuf>> {
-        let decoded = decoder.decode_file(source, format, limits)?;
+        let decoded =
+            decoder.decode_scaled(source, format, limits, ThumbnailSize::Detail.max_edge())?;
+        self.store(asset_id, &decoded)
+    }
+
+    /// Writes both thumbnail sizes from an already decoded image, which
+    /// should be at least as large as the detail size.
+    pub fn store(&self, asset_id: i64, decoded: &DecodedImage) -> Result<Vec<PathBuf>> {
         let mut paths = Vec::with_capacity(2);
         for size in [ThumbnailSize::Grid, ThumbnailSize::Detail] {
-            paths.push(self.write(asset_id, size, &decoded)?);
+            paths.push(self.write(asset_id, size, decoded)?);
         }
         Ok(paths)
     }
@@ -88,7 +95,7 @@ impl ThumbnailCache {
         if path.is_file() {
             return Ok(path);
         }
-        let decoded = decoder.decode_file(source, format, limits)?;
+        let decoded = decoder.decode_scaled(source, format, limits, size.max_edge())?;
         self.write(asset_id, size, &decoded)
     }
 
@@ -115,5 +122,9 @@ impl ThumbnailCache {
 fn scale(decoded: &DecodedImage, max_edge: u32) -> Result<image::RgbaImage> {
     let source = image::RgbaImage::from_raw(decoded.width, decoded.height, decoded.rgba.clone())
         .ok_or_else(|| ImagingError::Thumbnail("invalid RGBA buffer length".to_owned()))?;
-    Ok(image::imageops::thumbnail(&source, max_edge, max_edge))
+    let (width, height) = fit_within(decoded.width, decoded.height, max_edge);
+    if (width, height) == (decoded.width, decoded.height) {
+        return Ok(source);
+    }
+    Ok(image::imageops::thumbnail(&source, width, height))
 }

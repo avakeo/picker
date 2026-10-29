@@ -1,7 +1,7 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:20d1f95a-7795-5f08-966d-46f3bb8f790b",
+  "serialNumber": "urn:uuid:78d9f143-6cd6-5c3b-b86a-219602c9950a",
   "version": 1,
   "metadata": {
     "component": {
@@ -3379,6 +3379,19 @@
         {
           "license": {
             "name": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "objc2-image-io",
+      "version": "0.3.2",
+      "purl": "pkg:cargo/objc2-image-io@0.3.2",
+      "licenses": [
+        {
+          "license": {
+            "name": "Zlib OR Apache-2.0 OR MIT"
           }
         }
       ]

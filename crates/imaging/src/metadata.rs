@@ -40,19 +40,30 @@ pub fn extract<D: Decoder>(
     limits: &DecodeLimits,
 ) -> Result<ImageMetadata> {
     let decoded = decoder.decode_file(path, format, limits)?;
-    let mut metadata = ImageMetadata {
+    Ok(ImageMetadata {
         width: decoded.width,
         height: decoded.height,
+        ..extract_exif(path, format)
+    })
+}
+
+/// Reads the EXIF fields of an image without decoding its pixels. The
+/// dimensions are left at zero.
+///
+/// A missing or malformed EXIF block yields `None` for the affected fields.
+#[must_use]
+pub fn extract_exif(path: &Path, format: ImageFormat) -> ImageMetadata {
+    let mut metadata = ImageMetadata {
         format: Some(format.as_str().to_owned()),
         ..ImageMetadata::default()
     };
 
     let Ok(file) = File::open(path) else {
-        return Ok(metadata);
+        return metadata;
     };
     let mut reader = BufReader::new(file);
     let Ok(exif) = exif::Reader::new().read_from_container(&mut reader) else {
-        return Ok(metadata);
+        return metadata;
     };
 
     metadata.captured_at = exif_datetime(&exif);
@@ -66,7 +77,7 @@ pub fn extract<D: Decoder>(
         find_field(&exif, Tag::PhotographicSensitivity).and_then(|field| field.value.get_uint(0));
     metadata.focal_length_mm = rational_field(&exif, Tag::FocalLength);
     metadata.gps = gps_coordinates(&exif);
-    Ok(metadata)
+    metadata
 }
 
 fn find_field(exif: &exif::Exif, tag: Tag) -> Option<&exif::Field> {

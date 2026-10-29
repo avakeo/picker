@@ -1,5 +1,3 @@
-#[cfg(target_os = "macos")]
-use std::process::Command;
 use std::{
     fs,
     io::Cursor,
@@ -40,6 +38,20 @@ pub trait Decoder: Send + Sync {
         format: ImageFormat,
         limits: &DecodeLimits,
     ) -> Result<DecodedImage>;
+
+    /// Decodes a file after applying EXIF orientation, with the longer edge
+    /// reduced to at most `max_edge`. Decoders that can decode at a reduced
+    /// size override this to skip the full resolution image.
+    fn decode_scaled(
+        &self,
+        path: &Path,
+        format: ImageFormat,
+        limits: &DecodeLimits,
+        max_edge: u32,
+    ) -> Result<DecodedImage> {
+        let decoded = self.decode_file(path, format, limits)?;
+        Ok(downscale(decoded, max_edge))
+    }
 }
 
 /// Portable Rust decoder used on every platform as the fallback.
@@ -118,48 +130,56 @@ impl Decoder for PlatformDecoder {
     ) -> Result<DecodedImage> {
         #[cfg(target_os = "macos")]
         if format == ImageFormat::Heic {
-            return decode_heic_with_imageio(path, limits);
+            return crate::imageio::decode(path, limits, None);
         }
-        let _ = (path, format, limits);
         RustFallbackDecoder.decode_file(path, format, limits)
+    }
+
+    fn decode_scaled(
+        &self,
+        path: &Path,
+        format: ImageFormat,
+        limits: &DecodeLimits,
+        max_edge: u32,
+    ) -> Result<DecodedImage> {
+        #[cfg(target_os = "macos")]
+        if format == ImageFormat::Heic {
+            return crate::imageio::decode(path, limits, Some(max_edge));
+        }
+        RustFallbackDecoder.decode_scaled(path, format, limits, max_edge)
     }
 }
 
-#[cfg(target_os = "macos")]
-fn decode_heic_with_imageio(path: &Path, limits: &DecodeLimits) -> Result<DecodedImage> {
-    use std::sync::atomic::{AtomicU64, Ordering};
+/// Size that fits `width` x `height` within `max_edge` on both sides while
+/// keeping the aspect ratio. Images that already fit keep their size.
+#[must_use]
+pub fn fit_within(width: u32, height: u32, max_edge: u32) -> (u32, u32) {
+    let longest = width.max(height);
+    if longest <= max_edge || max_edge == 0 {
+        return (width, height);
+    }
+    let shrink = |side: u32| {
+        let scaled =
+            (u64::from(side) * u64::from(max_edge) + u64::from(longest) / 2) / u64::from(longest);
+        u32::try_from(scaled).unwrap_or(max_edge).max(1)
+    };
+    (shrink(width), shrink(height))
+}
 
-    // Each call gets its own file: workers decode in parallel, and two
-    // sources in different folders can share a file name.
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    // The limit applies to the source; the converted PNG can be larger.
-    let size = fs::metadata(path)?.len();
-    if size > limits.max_file_bytes {
-        return Err(ImagingError::TooLarge {
-            limit: "file size",
-            actual: size,
-        });
+/// Shrinks an image so its longer edge is at most `max_edge`. Smaller images
+/// are returned unchanged.
+#[must_use]
+pub fn downscale(decoded: DecodedImage, max_edge: u32) -> DecodedImage {
+    let (width, height) = fit_within(decoded.width, decoded.height, max_edge);
+    if (width, height) == (decoded.width, decoded.height) {
+        return decoded;
     }
-    let output = std::env::temp_dir().join(format!(
-        "picker-imageio-{}-{}.png",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    let status = Command::new("sips")
-        .args(["-s", "format", "png"])
-        .arg(path)
-        .arg("--out")
-        .arg(&output)
-        .status()
-        .map_err(|error| ImagingError::Decode(format!("ImageIO helper failed: {error}")))?;
-    if !status.success() {
-        return Err(ImagingError::Decode(
-            "ImageIO helper could not decode the HEIC image".to_owned(),
-        ));
+    let image = image::imageops::thumbnail(&decoded.into_image(), width, height);
+    DecodedImage {
+        width: image.width(),
+        height: image.height(),
+        rgba: image.into_raw(),
     }
-    let result = RustFallbackDecoder.decode_file(&output, ImageFormat::Png, limits);
-    let _ = fs::remove_file(output);
-    result
 }
 
 fn read_orientation(path: &Path) -> Option<u32> {

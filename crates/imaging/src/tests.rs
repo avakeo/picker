@@ -135,8 +135,12 @@ fn generates_two_sizes_and_reuses_the_cache() {
     {
         assert!(path.is_file());
         let thumbnail = image::open(path).expect("read thumbnail");
-        assert!(thumbnail.width() <= size.max_edge());
-        assert!(thumbnail.height() <= size.max_edge());
+        // 1200x800 keeps its 3:2 shape; the detail size does not enlarge it.
+        let expected = match size {
+            ThumbnailSize::Grid => (512, 341),
+            ThumbnailSize::Detail => (1200, 800),
+        };
+        assert_eq!((thumbnail.width(), thumbnail.height()), expected);
     }
 
     std::fs::remove_file(&source).expect("remove source");
@@ -630,4 +634,76 @@ fn heic_decodes_through_imageio_in_parallel() {
         PlatformDecoder.decode_file(&first, ImageFormat::Heic, &tiny),
         Err(ImagingError::TooLarge { .. })
     ));
+    let scaled = PlatformDecoder
+        .decode_scaled(&first, ImageFormat::Heic, &DecodeLimits::default(), 16)
+        .expect("scaled heic");
+    assert_eq!((scaled.width, scaled.height), (16, 8));
+}
+
+#[test]
+fn scaled_decoding_bounds_the_longer_edge_and_keeps_small_images() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    let path = temporary.path().join("wide.png");
+    std::fs::write(&path, encode(&test_image(40, 10), ImageFormat::Png)).expect("png");
+    let limits = DecodeLimits::default();
+    let scaled = RustFallbackDecoder
+        .decode_scaled(&path, ImageFormat::Png, &limits, 20)
+        .expect("scaled");
+    assert_eq!((scaled.width, scaled.height), (20, 5));
+    assert_eq!(scaled.rgba.len(), 20 * 5 * 4);
+    let unchanged = RustFallbackDecoder
+        .decode_scaled(&path, ImageFormat::Png, &limits, 64)
+        .expect("unchanged");
+    assert_eq!((unchanged.width, unchanged.height), (40, 10));
+}
+
+#[test]
+fn exif_is_read_without_decoding_the_pixels() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    // The pixels are unreadable, but the EXIF block before them is intact.
+    let mut bytes = jpeg_with_orientation(&test_image(6, 3), 6);
+    bytes.truncate(bytes.len() / 2);
+    let path = temporary.path().join("truncated.jpg");
+    std::fs::write(&path, &bytes).expect("write");
+    let metadata = extract_exif(&path, ImageFormat::Jpeg);
+    assert_eq!(metadata.format.as_deref(), Some("jpeg"));
+    assert_eq!((metadata.width, metadata.height), (0, 0));
+    let missing = extract_exif(&temporary.path().join("missing.jpg"), ImageFormat::Jpeg);
+    assert_eq!(missing.captured_at, None);
+}
+
+/// ADR-002: ImageIO applies the EXIF orientation itself and decodes at the
+/// requested size.
+#[cfg(target_os = "macos")]
+#[test]
+fn imageio_orients_and_decodes_at_a_reduced_size() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    let path = temporary.path().join("rotated.jpg");
+    std::fs::write(&path, jpeg_with_orientation(&test_image(60, 30), 6)).expect("write");
+    let limits = DecodeLimits::default();
+    let full = crate::imageio::decode(&path, &limits, None).expect("full");
+    assert_eq!((full.width, full.height), (30, 60));
+    let reduced = crate::imageio::decode(&path, &limits, Some(20)).expect("reduced");
+    assert_eq!((reduced.width, reduced.height), (10, 20));
+    assert_eq!(reduced.rgba.len(), 10 * 20 * 4);
+    let narrow = DecodeLimits {
+        max_edge: 50,
+        ..DecodeLimits::default()
+    };
+    assert!(matches!(
+        crate::imageio::decode(&path, &narrow, None),
+        Err(ImagingError::TooLarge { .. })
+    ));
+    let empty = temporary.path().join("empty.jpg");
+    std::fs::write(&empty, b"").expect("empty");
+    assert!(crate::imageio::decode(&empty, &limits, None).is_err());
+}
+
+#[test]
+fn fitting_keeps_the_aspect_ratio_and_never_enlarges() {
+    assert_eq!(fit_within(4032, 3024, 512), (512, 384));
+    assert_eq!(fit_within(3024, 4032, 512), (384, 512));
+    assert_eq!(fit_within(10_000, 1, 512), (512, 1));
+    assert_eq!(fit_within(300, 200, 512), (300, 200));
+    assert_eq!(fit_within(512, 512, 512), (512, 512));
 }

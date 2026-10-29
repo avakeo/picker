@@ -69,4 +69,5 @@ Apple M5 / 16 GB / macOS 26.6.2 / arm64で、`eval-data/images` の50枚、各5�
 ## ライセンス・参照情報
 
 - Apple ImageIO / Core Graphics: macOSシステムフレームワーク
-- 追加クレート: 計測後に使用有無とライセンスを記録
+- 追加クレート: `objc2-image-io`、`objc2-core-graphics`、`objc2-core-foundation`（いずれも Zlib OR Apache-2.0 OR MIT）。macOS だけで使い、`crates/imaging/src/imageio.rs` から ImageIO と Core Graphics を呼ぶ
+- 実装（2026-10-29）: HEIC は `imageio-thumbnail` 方式で読み込む。`kCGImageSourceCreateThumbnailWithTransform` で向きを補正し、最大辺 2048px（詳細サムネイルの大きさ）で読み込む。埋め込みサムネイル優先の方式は、埋め込みサムネイルが詳細表示の 2048px に足りるかを確かめていないため、まだ使っていない。以前の `sips` で PNG に変換する方式と比べて、`eval-data/images` の HEIC 30枚で 1枚あたり 1,516ms から 93ms になった（どちらも依存クレートを最適化した開発用ビルド）

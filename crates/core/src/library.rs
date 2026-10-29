@@ -5,8 +5,8 @@ use std::{
 };
 
 use picker_imaging::{
-    dhash, extract, extract_colors, Decoder, ImageFormat, ImagingError, PlatformDecoder,
-    RustFallbackDecoder, ThumbnailSize,
+    dhash, extract_colors, extract_exif, Decoder, ImageFormat, ImagingError, PlatformDecoder,
+    ThumbnailSize,
 };
 use picker_indexer::{IdentityReport, IdentityResolver};
 use picker_ml::{
@@ -23,7 +23,8 @@ use serde::{Deserialize, Serialize};
 use crate::portable::{PortableAlbum, PortableColors, PortableFeedback, PortableRoot};
 
 /// Version recorded for the image stages (metadata, thumbnail, phash, color).
-pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v1";
+/// v2: thumbnails keep the aspect ratio (v1 stretched them to squares).
+pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v2";
 /// Decisions on a custom tag after which its suggestions are recomputed.
 pub const RETRAIN_AFTER_FEEDBACK: usize = 5;
 /// Version recorded for the zero-shot auto-tag stage.
@@ -689,9 +690,15 @@ impl Library {
     ) -> Result<()> {
         let limits = picker_imaging::DecodeLimits::default();
         let cache = picker_imaging::ThumbnailCache::new(&self.cache_root);
-        let decoder = PlatformDecoder;
-        cache.generate(&decoder, asset_id, source, format, &limits)?;
-        let decoded = decoder.decode_file(source, format, &limits)?;
+        // One reduced decode serves the thumbnails, the perceptual hash, and
+        // the colors; none of them needs more than the detail size.
+        let decoded = PlatformDecoder.decode_scaled(
+            source,
+            format,
+            &limits,
+            ThumbnailSize::Detail.max_edge(),
+        )?;
+        cache.store(asset_id, &decoded)?;
         self.store
             .assets()
             .set_perceptual_hash(asset_id, &dhash(&decoded))?;
@@ -703,7 +710,7 @@ impl Library {
         self.store
             .colors()
             .set_auto(asset_id, &colors, "lab-kmeans-v1")?;
-        let metadata = extract(&RustFallbackDecoder, source, format, &limits)?;
+        let metadata = extract_exif(source, format);
         self.store.assets().set_metadata(&AssetMetadata {
             asset_id,
             camera_make: metadata.camera_make,
@@ -793,7 +800,14 @@ impl Library {
                 continue;
             };
             let limits = picker_imaging::DecodeLimits::default();
-            if let Ok(decoded) = RustFallbackDecoder.decode_file(&source, format, &limits) {
+            // Same input as the image stage, so a reset matches the colors
+            // computed when the file was indexed (HEIC included).
+            if let Ok(decoded) = PlatformDecoder.decode_scaled(
+                &source,
+                format,
+                &limits,
+                ThumbnailSize::Detail.max_edge(),
+            ) {
                 let colors = extract_colors(&decoded)
                     .into_iter()
                     .map(|color| (color.hex, color.ratio))
