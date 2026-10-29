@@ -1481,7 +1481,7 @@
   :global(*) { box-sizing: border-box; }
   .app { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: 100vh; }
   aside { display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow: auto; border-right: 1px solid #333; background: #1b1b1b; }
-  main { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; }
+  main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   h1 { margin: 0; font-size: 22px; }
   h2 { margin: 4px 0; font-size: 13px; color: #c9c9c9; }
   .stack { display: grid; gap: 6px; }
@@ -1521,7 +1521,7 @@
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #333; }
   .stages { display: flex; flex: 1; flex-wrap: wrap; gap: 10px; color: #b6b6b6; font-size: 12px; }
   .error { margin: 0; padding: 8px 14px; background: #4a1d1d; color: #ffb4b4; }
-  .content { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
+  .content { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
   .grid-area { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .grid-area :global(.virtual-grid) { flex: 1; }
   .empty { padding: 24px; }
