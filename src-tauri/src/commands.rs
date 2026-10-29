@@ -123,7 +123,9 @@ impl AppState {
 type CommandResult<T> = Result<T, String>;
 
 fn error(error: impl std::fmt::Display) -> String {
-    error.to_string()
+    let message = error.to_string();
+    log::warn!("command failed: {message}");
+    message
 }
 
 pub(crate) fn parse_id(value: &str) -> CommandResult<i64> {
@@ -475,6 +477,14 @@ pub fn finder_reveal(
         .ok_or_else(|| "location not found".to_owned())?;
     reveal(&location.absolute_path)?;
     Ok(location.absolute_path.to_string_lossy().into_owned())
+}
+
+/// Shows the current log file in Finder and returns its path.
+#[tauri::command]
+pub fn log_reveal() -> CommandResult<String> {
+    let path = crate::logging::current_path().ok_or_else(|| "logging is not running".to_owned())?;
+    reveal(path)?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 fn reveal(path: &Path) -> CommandResult<()> {
@@ -1361,7 +1371,7 @@ pub(crate) fn emit_index_progress(app: &tauri::AppHandle) {
     let status = {
         let library = state.library();
         if let Err(error) = library.sync_vectors() {
-            eprintln!("vector index sync failed: {error}");
+            log::error!("vector index sync failed: {error}");
         }
         library.index_status()
     };
@@ -1369,7 +1379,7 @@ pub(crate) fn emit_index_progress(app: &tauri::AppHandle) {
         Ok(status) => {
             let _ = app.emit(IndexProgressChanged::NAME, to_event(&status_view(status)));
         }
-        Err(error) => eprintln!("index status unavailable: {error}"),
+        Err(error) => log::error!("index status unavailable: {error}"),
     }
 }
 

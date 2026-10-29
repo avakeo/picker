@@ -64,6 +64,10 @@ export function revealAsset(assetId: string, locationId: string): Promise<string
   return invoke("finder_reveal", { request });
 }
 
+export function revealLog(): Promise<string> {
+  return invoke("log_reveal");
+}
+
 export function updateViewport(assetIds: string[]): Promise<number> {
   const request: ViewportRequest = { assetIds };
   return invoke("viewport_update", { request });

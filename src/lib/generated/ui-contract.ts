@@ -216,6 +216,7 @@ export const COMMANDS = {
            assetSearch: "asset_search",
            assetDetail: "asset_detail",
            finderReveal: "finder_reveal",
+           logReveal: "log_reveal",
            viewportUpdate: "viewport_update",
            indexStatus: "index_status",
            pauseIndex: "pause_index",

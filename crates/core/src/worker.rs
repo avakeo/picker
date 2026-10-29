@@ -208,7 +208,17 @@ impl Library {
             Err(error) => {
                 let message = error.to_string();
                 let finished = self.store().jobs().fail_or_retry(job.id, &message);
-                if matches!(&finished, Ok(job) if job.status == JobStatus::Failed) {
+                let gave_up = matches!(&finished, Ok(job) if job.status == JobStatus::Failed);
+                log::warn!(
+                    "image job for asset {asset_id} ({}) failed{}: {message}",
+                    self.source_label(asset_id),
+                    if gave_up {
+                        ", giving up"
+                    } else {
+                        ", will retry"
+                    }
+                );
+                if gave_up {
                     self.store().stage_states().upsert(
                         target,
                         Stage::Thumbnail,
@@ -478,7 +488,7 @@ impl Drop for WorkerPool {
 
 fn refresh_control(library: &Library, power: &dyn PowerSource, control: &Control) {
     let settings = library.worker_settings().unwrap_or_else(|error| {
-        eprintln!("worker settings unavailable: {error}");
+        log::warn!("worker settings unavailable: {error}");
         WorkerSettings::default()
     });
     let on_battery = power.on_battery();
@@ -541,7 +551,7 @@ fn run_worker(
             match Library::open(&config.database, &config.cache_root) {
                 Ok(opened) => library = Some(opened),
                 Err(error) => {
-                    eprintln!(
+                    log::error!(
                         "{} worker {index} could not open the library: {error}",
                         lane.name()
                     );
@@ -583,7 +593,7 @@ fn run_worker(
                 }
             }
             Err(error) => {
-                eprintln!("{} worker {index} failed: {error}", lane.name());
+                log::error!("{} worker {index} failed: {error}", lane.name());
                 if !wait_or_stop(control, config.idle_wait) {
                     return;
                 }

@@ -6,6 +6,7 @@ license = "MIT"
 description = "Application-independent domain and use-case layer for Picker"
 
 [dependencies]
+log = "0.4"
 picker-fswatch = { path = "../fswatch" }
 picker-imaging = { path = "../imaging" }
 picker-indexer = { path = "../indexer" }

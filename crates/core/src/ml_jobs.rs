@@ -75,7 +75,18 @@ impl Library {
             Err(error) => {
                 let message = error.to_string();
                 let finished = self.store().jobs().fail_or_retry(job.id, &message);
-                if matches!(&finished, Ok(failed) if failed.status == JobStatus::Failed) {
+                let gave_up = matches!(&finished, Ok(failed) if failed.status == JobStatus::Failed);
+                log::warn!(
+                    "{:?} job for asset {asset_id} ({}) failed{}: {message}",
+                    job.stage,
+                    self.source_label(asset_id),
+                    if gave_up {
+                        ", giving up"
+                    } else {
+                        ", will retry"
+                    }
+                );
+                if gave_up {
                     self.store().stage_states().upsert(
                         StageTarget::Asset(asset_id),
                         job.stage,

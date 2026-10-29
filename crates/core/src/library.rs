@@ -394,9 +394,18 @@ impl Library {
     /// files that still need it. Decisions waiting in a portable import are
     /// applied here, because they only need the asset to exist.
     pub fn sync_root(&self, root_id: i64) -> Result<IdentityReport> {
+        let started = std::time::Instant::now();
         let root = self.store.roots().get(root_id)?;
         let resolver = IdentityResolver::new(&self.store);
         let report = resolver.sync_root(root.id, &root.absolute_path)?;
+        log::info!(
+            "scanned root {root_id} in {} ms: {} added, {} updated, {} unchanged, {} missing",
+            started.elapsed().as_millis(),
+            report.added,
+            report.updated,
+            report.unchanged,
+            report.missing
+        );
         self.enqueue_unprocessed(root.id)?;
         for location in self.store.locations().list_for_root(root.id)? {
             if location.status == LocationStatus::Present {
@@ -1036,6 +1045,15 @@ impl Library {
             ));
         }
         Ok(None)
+    }
+
+    /// Where an asset's file is, for log messages.
+    pub(crate) fn source_label(&self, asset_id: i64) -> String {
+        match self.present_source(asset_id) {
+            Ok(Some(path)) => path.display().to_string(),
+            Ok(None) => "no present file".to_owned(),
+            Err(error) => format!("location unavailable: {error}"),
+        }
     }
 
     /// Embeds text and returns nearest assets with cosine scores.

@@ -4,6 +4,7 @@
 
 mod commands;
 pub mod contract;
+mod logging;
 mod thumbnail_protocol;
 
 use std::{collections::BTreeSet, fs};
@@ -97,6 +98,7 @@ pub fn run() {
             commands::asset_search,
             commands::asset_detail,
             commands::finder_reveal,
+            commands::log_reveal,
             commands::viewport_update,
             commands::index_status,
             commands::pause_index,
@@ -158,6 +160,19 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
 
+            match app
+                .path()
+                .app_log_dir()
+                .map_err(std::io::Error::other)
+                .and_then(|dir| logging::init(&dir))
+            {
+                Ok(path) => log::info!(
+                    "Picker {} started; log file {}",
+                    env!("CARGO_PKG_VERSION"),
+                    path.display()
+                ),
+                Err(error) => eprintln!("logging unavailable: {error}"),
+            }
             let data_dir = app.path().app_data_dir()?;
             fs::create_dir_all(&data_dir)?;
             let database = commands::default_database(&data_dir);
@@ -174,10 +189,10 @@ pub fn run() {
             if let Err(error) =
                 library.snapshot_if_due(&data_dir.join("snapshots"), now, 24 * 60 * 60, 7)
             {
-                eprintln!("database snapshot failed: {error}");
+                log::error!("database snapshot failed: {error}");
             }
             if let Err(error) = library.ensure_default_auto_albums() {
-                eprintln!("default albums unavailable: {error}");
+                log::error!("default albums unavailable: {error}");
             }
             app.manage(commands::AppState::new(library, models));
             let handle = app.handle().clone();
@@ -187,7 +202,7 @@ pub fn run() {
                 std::sync::Arc::new(move || commands::emit_index_progress(&handle)),
             ) {
                 Ok(pool) => app.state::<commands::AppState>().set_workers(pool),
-                Err(error) => eprintln!("background workers unavailable: {error}"),
+                Err(error) => log::error!("background workers unavailable: {error}"),
             }
             let handle = app.handle().clone();
             match picker_core::WatchService::start(
@@ -195,11 +210,11 @@ pub fn run() {
                 std::sync::Arc::new(move || commands::emit_index_progress(&handle)),
             ) {
                 Ok(service) => app.state::<commands::AppState>().set_watch(service),
-                Err(error) => eprintln!("folder watching unavailable: {error}"),
+                Err(error) => log::error!("folder watching unavailable: {error}"),
             }
             // Loaded after the workers start, so they receive the model too.
             if let Err(error) = app.state::<commands::AppState>().reload_embedder() {
-                eprintln!("embedding model unavailable: {error}");
+                log::warn!("embedding model unavailable: {error}");
             }
             let _core = create_core();
             Ok(())

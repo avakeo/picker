@@ -25,6 +25,7 @@
     exportPortable,
     exportXmp,
     clearCache,
+    revealLog,
     getSetting,
     filterAssets,
     importPortable,
@@ -221,6 +222,14 @@
       const report = await clearCache(target);
       cacheMessage = `再生成を登録しました（画像 ${report.imageJobs} 件、埋め込み ${report.embeddingJobs} 件）`;
       await Promise.all([refreshPage(true), refreshEmbeddings(), refreshStatus()]);
+    });
+  }
+
+  let logMessage = "";
+
+  async function handleRevealLog() {
+    await guard(async () => {
+      logMessage = `ログ: ${await revealLog()}`;
     });
   }
 
@@ -1054,6 +1063,10 @@
         <button type="button" onclick={() => void handleClearCache("all")}>すべて</button>
         {#if cacheMessage}<p>{cacheMessage}</p>{/if}
       </div>
+      <div class="cache">
+        <button type="button" onclick={() => void handleRevealLog()}>ログを Finder で表示</button>
+        {#if logMessage}<p class="muted">{logMessage}</p>{/if}
+      </div>
       <details class="about">
         <summary>このアプリについて</summary>
         <p>Picker 0.1.0（開発版）・MIT License</p>
@@ -1525,6 +1538,8 @@
   .aliases { margin: 3px 0; padding-left: 18px; font-size: 12px; }
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #333; }
   .stages { display: flex; flex: 1; flex-wrap: wrap; gap: 10px; color: #b6b6b6; font-size: 12px; }
+  .stage { display: flex; align-items: center; gap: 6px; }
+  .stage progress { width: 120px; }
   .error { margin: 0; padding: 8px 14px; background: #4a1d1d; color: #ffb4b4; }
   .content { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
   .grid-area { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -1538,8 +1553,6 @@
   dd { margin: 0; overflow-wrap: anywhere; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border: 1px solid #4d6a45; border-radius: 12px; background: #24301f; font-size: 12px; }
-  .stage { display: flex; align-items: center; gap: 6px; }
-  .stage progress { width: 120px; }
   .chip.suggested { border-color: #6a6040; background: #2f2a1d; }
   .chip em { color: #a3a3a3; font-size: 10px; }
   .chip button { padding: 0 4px; border: 0; background: none; }

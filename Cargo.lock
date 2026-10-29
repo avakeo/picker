@@ -2663,6 +2663,7 @@ dependencies = [
 name = "picker-app"
 version = "0.1.0"
 dependencies = [
+ "log",
  "picker-core",
  "picker-ml",
  "picker-store",
@@ -2679,6 +2680,7 @@ name = "picker-core"
 version = "0.1.0"
 dependencies = [
  "image",
+ "log",
  "picker-fswatch",
  "picker-imaging",
  "picker-indexer",

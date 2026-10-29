@@ -132,7 +132,9 @@ struct Watch {
 impl Watch {
     fn new(library: Library, config: WatchConfig, on_change: ChangeCallback) -> Self {
         let notifier = ChangeNotifier::new()
-            .map_err(|error| eprintln!("change notifications unavailable: {error}"))
+            .map_err(|error| {
+                log::warn!("change notifications unavailable, polling instead: {error}")
+            })
             .ok();
         let debouncer = Debouncer::new(config.quiet, config.max_wait);
         Self {
@@ -151,7 +153,7 @@ impl Watch {
         while !stop.load(Ordering::Relaxed) {
             if refresh.swap(false, Ordering::Relaxed) || Instant::now() >= next_health {
                 if let Err(error) = self.check_roots() {
-                    eprintln!("root check failed: {error}");
+                    log::error!("root check failed: {error}");
                 }
                 next_health = Instant::now() + self.config.health_interval;
             }
@@ -242,6 +244,7 @@ impl Watch {
                 }
                 // A root that went away: keep its files as offline.
                 (None | Some(true), false) => {
+                    log::info!("root {root_id} went offline: {}", path.display());
                     self.library
                         .store()
                         .roots()
@@ -323,7 +326,7 @@ impl Watch {
         match self.library.sync_root(root_id) {
             Ok(_) => true,
             Err(error) => {
-                eprintln!("scan of {:?} failed: {error}", root.path);
+                log::error!("scan of {:?} failed: {error}", root.path);
                 false
             }
         }
