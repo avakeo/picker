@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fs::File, io::Read, path::Path};
 
 /// Image formats supported by the MVP decoder boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -21,6 +21,19 @@ impl ImageFormat {
             "webp" => Some(Self::Webp),
             _ => None,
         }
+    }
+
+    /// Detects the format of a file from its signature, falling back to the
+    /// extension when the signature is not recognized. Files are often
+    /// renamed or saved with the wrong extension, such as a JPEG named
+    /// `.png`, so the content decides when it can.
+    #[must_use]
+    pub fn detect(path: &Path) -> Option<Self> {
+        let mut head = [0_u8; 16];
+        let read = File::open(path)
+            .and_then(|mut file| read_up_to(&mut file, &mut head))
+            .unwrap_or(0);
+        Self::from_magic(&head[..read]).or_else(|| Self::from_path(path))
     }
 
     /// Returns the format detected from a standard file signature.
@@ -63,4 +76,16 @@ impl ImageFormat {
             Self::Heic => None,
         }
     }
+}
+
+/// Reads until `buffer` is full or the file ends.
+fn read_up_to(file: &mut File, buffer: &mut [u8]) -> std::io::Result<usize> {
+    let mut filled = 0;
+    while filled < buffer.len() {
+        match file.read(&mut buffer[filled..])? {
+            0 => break,
+            count => filled += count,
+        }
+    }
+    Ok(filled)
 }

@@ -2003,3 +2003,23 @@ fn removing_a_root_keeps_tags_of_assets_found_elsewhere() {
     assert_eq!(present_paths(&library, shared), vec!["shared copy.png"]);
     assert_eq!(confirmed_tag_names(&library, shared), vec!["keep"]);
 }
+
+/// A JPEG saved with a `.png` name is read by its content, not its name.
+#[test]
+fn files_with_the_wrong_extension_are_processed_by_content() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    let mut jpeg = std::io::Cursor::new(Vec::new());
+    DynamicImage::ImageRgb8(image::RgbImage::from_pixel(6, 4, image::Rgb([200, 40, 40])))
+        .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+        .expect("encode jpeg");
+    fs::write(media.path().join("really-a-jpeg.png"), jpeg.into_inner()).expect("write");
+
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "テスト").expect("add root");
+    library.scan_root(root.id).expect("scan");
+    let page = library.asset_page(0, 10).expect("page");
+    assert_eq!(page.items.len(), 1);
+    let detail = library.asset_detail(page.items[0].id).expect("detail");
+    assert_eq!(detail.summary.thumbnail, ThumbnailState::Ready);
+}

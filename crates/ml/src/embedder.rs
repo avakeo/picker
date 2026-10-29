@@ -146,7 +146,7 @@ impl ClipJapanese {
 
 impl Embedder for ClipJapanese {
     fn embed_image(&self, path: &Path) -> Result<Vec<f32>, EmbeddingError> {
-        let format = ImageFormat::from_path(path)
+        let format = ImageFormat::detect(path)
             .ok_or_else(|| EmbeddingError::Image("unsupported image format".to_owned()))?;
         let decoded = PlatformDecoder
             .decode_file(path, format, &DecodeLimits::default())

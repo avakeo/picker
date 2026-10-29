@@ -707,3 +707,20 @@ fn fitting_keeps_the_aspect_ratio_and_never_enlarges() {
     assert_eq!(fit_within(300, 200, 512), (300, 200));
     assert_eq!(fit_within(512, 512, 512), (512, 512));
 }
+
+#[test]
+fn detection_prefers_the_content_over_the_extension() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    let mislabeled = temporary.path().join("photo.png");
+    std::fs::write(&mislabeled, encode(&test_image(4, 4), ImageFormat::Jpeg)).expect("jpeg");
+    assert_eq!(ImageFormat::detect(&mislabeled), Some(ImageFormat::Jpeg));
+    // Unknown or unreadable content falls back to the extension.
+    let empty = temporary.path().join("empty.webp");
+    std::fs::write(&empty, b"").expect("empty");
+    assert_eq!(ImageFormat::detect(&empty), Some(ImageFormat::Webp));
+    let missing = temporary.path().join("missing.heic");
+    assert_eq!(ImageFormat::detect(&missing), Some(ImageFormat::Heic));
+    let text = temporary.path().join("notes.txt");
+    std::fs::write(&text, b"plain text, not an image").expect("text");
+    assert_eq!(ImageFormat::detect(&text), None);
+}

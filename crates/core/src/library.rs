@@ -805,7 +805,7 @@ impl Library {
             }
             let root = self.store.roots().get(location.root_id)?;
             let source = Path::new(&root.absolute_path).join(&location.relative_path);
-            let Some(format) = ImageFormat::from_path(&source) else {
+            let Some(format) = ImageFormat::detect(&source) else {
                 continue;
             };
             let limits = picker_imaging::DecodeLimits::default();

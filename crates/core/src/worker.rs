@@ -280,7 +280,7 @@ impl Library {
             // queues it again when the file returns.
             return Ok(());
         };
-        let format = ImageFormat::from_path(&source)
+        let format = ImageFormat::detect(&source)
             .ok_or_else(|| LibraryError::InvalidInput("unsupported image format".to_owned()))?;
         self.process_asset(asset_id, &source, format)
     }
