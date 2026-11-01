@@ -52,6 +52,18 @@ pub trait Decoder: Send + Sync {
         let decoded = self.decode_file(path, format, limits)?;
         Ok(downscale(decoded, max_edge))
     }
+
+    /// Returns the upright width and height of a file. Decoders that can
+    /// read the size from the header override this to skip decoding.
+    fn dimensions(
+        &self,
+        path: &Path,
+        format: ImageFormat,
+        limits: &DecodeLimits,
+    ) -> Result<(u32, u32)> {
+        let decoded = self.decode_file(path, format, limits)?;
+        Ok((decoded.width, decoded.height))
+    }
 }
 
 /// Portable Rust decoder used on every platform as the fallback.
@@ -77,6 +89,35 @@ impl Decoder for RustFallbackDecoder {
         let orientation = read_orientation(path).unwrap_or(1);
         decoded = apply_orientation(decoded, orientation);
         Ok(decoded)
+    }
+
+    fn dimensions(
+        &self,
+        path: &Path,
+        format: ImageFormat,
+        limits: &DecodeLimits,
+    ) -> Result<(u32, u32)> {
+        let image_format = format
+            .image_crate_format()
+            .ok_or_else(|| ImagingError::UnsupportedFormat(format.as_str().to_owned()))?;
+        let file = fs::File::open(path)?;
+        let reader = image::ImageReader::with_format(std::io::BufReader::new(file), image_format);
+        let (width, height) = reader.into_dimensions()?;
+        if width == 0 || height == 0 {
+            return Err(ImagingError::Decode("image has zero dimensions".to_owned()));
+        }
+        if width > limits.max_edge || height > limits.max_edge {
+            return Err(ImagingError::TooLarge {
+                limit: "edge length",
+                actual: u64::from(width.max(height)),
+            });
+        }
+        let orientation = read_orientation(path).unwrap_or(1);
+        Ok(if (5..=8).contains(&orientation) {
+            (height, width)
+        } else {
+            (width, height)
+        })
     }
 }
 
@@ -147,6 +188,19 @@ impl Decoder for PlatformDecoder {
             return crate::imageio::decode(path, limits, Some(max_edge));
         }
         RustFallbackDecoder.decode_scaled(path, format, limits, max_edge)
+    }
+
+    fn dimensions(
+        &self,
+        path: &Path,
+        format: ImageFormat,
+        limits: &DecodeLimits,
+    ) -> Result<(u32, u32)> {
+        #[cfg(target_os = "macos")]
+        if format == ImageFormat::Heic {
+            return crate::imageio::dimensions(path, limits);
+        }
+        RustFallbackDecoder.dimensions(path, format, limits)
     }
 }
 

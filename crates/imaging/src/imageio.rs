@@ -15,7 +15,7 @@ use objc2_core_graphics::{
     CGImageByteOrderInfo,
 };
 use objc2_image_io::{
-    kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth,
+    kCGImagePropertyOrientation, kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth,
     kCGImageSourceCreateThumbnailFromImageAlways, kCGImageSourceCreateThumbnailWithTransform,
     kCGImageSourceShouldCache, kCGImageSourceThumbnailMaxPixelSize, CGImageSource,
 };
@@ -29,6 +29,43 @@ pub(crate) fn decode(
     limits: &DecodeLimits,
     max_edge: Option<u32>,
 ) -> Result<DecodedImage> {
+    let (source, stored) = open(path, limits)?;
+    let longest = stored.width.max(stored.height);
+    let target = max_edge.map_or(longest, |edge| edge.clamp(1, longest));
+    let target = CFNumber::new_i64(i64::from(target));
+    let thumbnail_options = options(&[
+        (
+            unsafe { kCGImageSourceCreateThumbnailFromImageAlways },
+            boolean(true),
+        ),
+        (
+            unsafe { kCGImageSourceCreateThumbnailWithTransform },
+            boolean(true),
+        ),
+        (
+            unsafe { kCGImageSourceThumbnailMaxPixelSize },
+            target.as_ref(),
+        ),
+        (unsafe { kCGImageSourceShouldCache }, boolean(false)),
+    ]);
+    // SAFETY: `source` is valid and index 0 exists (checked by `open`).
+    let image = unsafe { source.thumbnail_at_index(0, Some(thumbnail_options.as_ref())) }
+        .ok_or_else(|| decode_error("ImageIO could not decode the image"))?;
+    render(&image, limits)
+}
+
+/// Reads the upright size of the first image without decoding its pixels.
+pub(crate) fn dimensions(path: &Path, limits: &DecodeLimits) -> Result<(u32, u32)> {
+    let (_, stored) = open(path, limits)?;
+    Ok(if (5..=8).contains(&stored.orientation) {
+        (stored.height, stored.width)
+    } else {
+        (stored.width, stored.height)
+    })
+}
+
+/// Opens an image source and checks the stored size against the limits.
+fn open(path: &Path, limits: &DecodeLimits) -> Result<(CFRetained<CGImageSource>, Stored)> {
     let size = fs::metadata(path)?.len();
     if size > limits.max_file_bytes {
         return Err(ImagingError::TooLarge {
@@ -48,47 +85,32 @@ pub(crate) fn decode(
         return Err(decode_error("ImageIO found no image in the file"));
     }
 
-    let (width, height) = pixel_size(&source)?;
-    if width > limits.max_edge || height > limits.max_edge {
+    let stored = stored_properties(&source)?;
+    if stored.width > limits.max_edge || stored.height > limits.max_edge {
         return Err(ImagingError::TooLarge {
             limit: "edge length",
-            actual: u64::from(width.max(height)),
+            actual: u64::from(stored.width.max(stored.height)),
         });
     }
-    let pixels = u64::from(width) * u64::from(height);
+    let pixels = u64::from(stored.width) * u64::from(stored.height);
     if pixels > limits.max_pixels {
         return Err(ImagingError::TooLarge {
             limit: "pixel count",
             actual: pixels,
         });
     }
-
-    let longest = width.max(height);
-    let target = max_edge.map_or(longest, |edge| edge.clamp(1, longest));
-    let target = CFNumber::new_i64(i64::from(target));
-    let thumbnail_options = options(&[
-        (
-            unsafe { kCGImageSourceCreateThumbnailFromImageAlways },
-            boolean(true),
-        ),
-        (
-            unsafe { kCGImageSourceCreateThumbnailWithTransform },
-            boolean(true),
-        ),
-        (
-            unsafe { kCGImageSourceThumbnailMaxPixelSize },
-            target.as_ref(),
-        ),
-        (unsafe { kCGImageSourceShouldCache }, boolean(false)),
-    ]);
-    // SAFETY: `source` is valid and index 0 exists (checked above).
-    let image = unsafe { source.thumbnail_at_index(0, Some(thumbnail_options.as_ref())) }
-        .ok_or_else(|| decode_error("ImageIO could not decode the image"))?;
-    render(&image, limits)
+    Ok((source, stored))
 }
 
-/// Reads the stored pixel size without decoding the image.
-fn pixel_size(source: &CGImageSource) -> Result<(u32, u32)> {
+/// Pixel size as stored in the file, before the orientation is applied.
+struct Stored {
+    width: u32,
+    height: u32,
+    orientation: u32,
+}
+
+/// Reads the stored pixel size and orientation without decoding the image.
+fn stored_properties(source: &CGImageSource) -> Result<Stored> {
     // SAFETY: `source` is valid and index 0 exists.
     let properties = unsafe { source.properties_at_index(0, None) }
         .ok_or_else(|| decode_error("ImageIO returned no image properties"))?;
@@ -106,9 +128,15 @@ fn pixel_size(source: &CGImageSource) -> Result<(u32, u32)> {
     // SAFETY: the keys are constant CFStrings exported by ImageIO.
     let width = read(unsafe { kCGImagePropertyPixelWidth });
     let height = read(unsafe { kCGImagePropertyPixelHeight });
-    width
+    let orientation = read(unsafe { kCGImagePropertyOrientation }).unwrap_or(1);
+    let (width, height) = width
         .zip(height)
-        .ok_or_else(|| decode_error("image has zero or unknown dimensions"))
+        .ok_or_else(|| decode_error("image has zero or unknown dimensions"))?;
+    Ok(Stored {
+        width,
+        height,
+        orientation,
+    })
 }
 
 /// Draws a CGImage into an sRGB RGBA8 buffer and removes the

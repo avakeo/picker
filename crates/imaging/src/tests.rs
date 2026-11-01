@@ -638,6 +638,10 @@ fn heic_decodes_through_imageio_in_parallel() {
         .decode_scaled(&first, ImageFormat::Heic, &DecodeLimits::default(), 16)
         .expect("scaled heic");
     assert_eq!((scaled.width, scaled.height), (16, 8));
+    let size = PlatformDecoder
+        .dimensions(&first, ImageFormat::Heic, &DecodeLimits::default())
+        .expect("heic dimensions");
+    assert_eq!(size, (64, 32));
 }
 
 #[test]
@@ -685,6 +689,10 @@ fn imageio_orients_and_decodes_at_a_reduced_size() {
     assert_eq!((full.width, full.height), (30, 60));
     let reduced = crate::imageio::decode(&path, &limits, Some(20)).expect("reduced");
     assert_eq!((reduced.width, reduced.height), (10, 20));
+    assert_eq!(
+        crate::imageio::dimensions(&path, &limits).expect("dimensions"),
+        (30, 60)
+    );
     assert_eq!(reduced.rgba.len(), 10 * 20 * 4);
     let narrow = DecodeLimits {
         max_edge: 50,
@@ -697,6 +705,51 @@ fn imageio_orients_and_decodes_at_a_reduced_size() {
     let empty = temporary.path().join("empty.jpg");
     std::fs::write(&empty, b"").expect("empty");
     assert!(crate::imageio::decode(&empty, &limits, None).is_err());
+}
+
+#[test]
+fn dimensions_are_read_upright_from_the_header() {
+    let temporary = tempfile::tempdir().expect("tempdir");
+    let limits = DecodeLimits::default();
+    let rotated = temporary.path().join("rotated.jpg");
+    // The pixel data is cut off; the size still comes from the header.
+    let mut bytes = jpeg_with_orientation(&test_image(60, 30), 6);
+    bytes.truncate(bytes.len() / 2);
+    std::fs::write(&rotated, &bytes).expect("jpeg");
+    assert_eq!(
+        RustFallbackDecoder
+            .dimensions(&rotated, ImageFormat::Jpeg, &limits)
+            .expect("rotated"),
+        (30, 60)
+    );
+    let wide = temporary.path().join("wide.png");
+    std::fs::write(&wide, encode(&test_image(40, 10), ImageFormat::Png)).expect("png");
+    assert_eq!(
+        PlatformDecoder
+            .dimensions(&wide, ImageFormat::Png, &limits)
+            .expect("wide"),
+        (40, 10)
+    );
+    let narrow = DecodeLimits {
+        max_edge: 20,
+        ..DecodeLimits::default()
+    };
+    assert!(matches!(
+        RustFallbackDecoder.dimensions(&wide, ImageFormat::Png, &narrow),
+        Err(ImagingError::TooLarge { .. })
+    ));
+    let garbage = temporary.path().join("garbage.png");
+    std::fs::write(&garbage, b"not an image").expect("garbage");
+    assert!(RustFallbackDecoder
+        .dimensions(&garbage, ImageFormat::Png, &limits)
+        .is_err());
+    assert!(RustFallbackDecoder
+        .dimensions(
+            &temporary.path().join("missing.png"),
+            ImageFormat::Png,
+            &limits
+        )
+        .is_err());
 }
 
 #[test]
