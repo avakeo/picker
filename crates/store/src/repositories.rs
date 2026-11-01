@@ -201,13 +201,14 @@ impl<'connection> AssetRepository<'connection> {
         id.map(|value| self.get(value)).transpose()
     }
 
-    /// Stores or replaces the EXIF cache for an asset.
+    /// Stores or replaces the file metadata for an asset.
     pub fn set_metadata(&self, metadata: &AssetMetadata) -> Result<()> {
         let changed = self.connection.execute(
             "UPDATE assets SET
                 camera_make = ?1, camera_model = ?2, lens = ?3, exposure_time = ?4,
                 f_number = ?5, iso = ?6, focal_length_mm = ?7,
-                gps_latitude = ?8, gps_longitude = ?9, updated_at = unixepoch()
+                gps_latitude = ?8, gps_longitude = ?9,
+                width = ?11, height = ?12, captured_at = ?13, updated_at = unixepoch()
              WHERE id = ?10",
             params![
                 metadata.camera_make,
@@ -220,6 +221,9 @@ impl<'connection> AssetRepository<'connection> {
                 metadata.gps_latitude,
                 metadata.gps_longitude,
                 metadata.asset_id,
+                metadata.width,
+                metadata.height,
+                metadata.captured_at,
             ],
         )?;
         if changed == 0 {
@@ -296,13 +300,14 @@ impl<'connection> AssetRepository<'connection> {
         Ok(pairs)
     }
 
-    /// Returns the EXIF cache for an asset.
+    /// Returns the file metadata for an asset.
     pub fn metadata(&self, id: i64) -> Result<Option<AssetMetadata>> {
         Ok(self
             .connection
             .query_row(
                 "SELECT id, camera_make, camera_model, lens, exposure_time, f_number,
-                        iso, focal_length_mm, gps_latitude, gps_longitude
+                        iso, focal_length_mm, gps_latitude, gps_longitude,
+                        width, height, captured_at
                  FROM assets WHERE id = ?1",
                 [id],
                 |row| {
@@ -317,6 +322,9 @@ impl<'connection> AssetRepository<'connection> {
                         focal_length_mm: row.get(7)?,
                         gps_latitude: row.get(8)?,
                         gps_longitude: row.get(9)?,
+                        width: row.get(10)?,
+                        height: row.get(11)?,
+                        captured_at: row.get(12)?,
                     })
                 },
             )

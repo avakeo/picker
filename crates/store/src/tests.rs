@@ -378,6 +378,9 @@ fn asset_metadata_round_trips_and_rejects_unknown_assets() -> Result<()> {
         store.assets().metadata(created.id)?,
         Some(AssetMetadata {
             asset_id: created.id,
+            width: Some(640),
+            height: Some(480),
+            captured_at: Some(1_700_000_000),
             ..AssetMetadata::default()
         })
     );
@@ -393,9 +396,17 @@ fn asset_metadata_round_trips_and_rejects_unknown_assets() -> Result<()> {
         focal_length_mm: Some(35.0),
         gps_latitude: Some(35.675),
         gps_longitude: Some(139.65),
+        width: Some(4032),
+        height: Some(3024),
+        captured_at: Some(1_700_000_000),
     };
     store.assets().set_metadata(&metadata)?;
     assert_eq!(store.assets().metadata(created.id)?, Some(metadata));
+    let stored = store.assets().get(created.id)?;
+    assert_eq!(
+        (stored.width, stored.height, stored.captured_at),
+        (Some(4032), Some(3024), Some(1_700_000_000))
+    );
 
     let missing = AssetMetadata {
         asset_id: created.id + 100,

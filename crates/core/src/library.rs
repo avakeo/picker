@@ -24,7 +24,9 @@ use crate::portable::{PortableAlbum, PortableColors, PortableFeedback, PortableR
 
 /// Version recorded for the image stages (metadata, thumbnail, phash, color).
 /// v2: thumbnails keep the aspect ratio (v1 stretched them to squares).
-pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v2";
+/// v4: the metadata stage stores the size and the capture time (v3 was
+/// only recorded by an unpublished build that skipped the work).
+pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v4";
 /// Decisions on a custom tag after which its suggestions are recomputed.
 pub const RETRAIN_AFTER_FEEDBACK: usize = 5;
 /// Version recorded for the zero-shot auto-tag stage.
@@ -674,16 +676,18 @@ impl Library {
     }
 
     /// Whether an asset has current image results. An asset processed before
-    /// stage states were recorded counts as current.
+    /// stage states were recorded counts as current. A pending state means
+    /// the work was queued again, for example after a version change, so the
+    /// existing thumbnails do not count.
     pub(crate) fn is_image_processed(&self, asset_id: i64) -> Result<bool> {
-        let outdated = self
+        let current = self
             .store
             .stage_states()
             .get(StageTarget::Asset(asset_id), Stage::Thumbnail)?
-            .is_some_and(|state| {
-                state.status == StageStatus::Succeeded && state.version != IMAGE_STAGE_VERSION
+            .is_none_or(|state| {
+                state.status == StageStatus::Succeeded && state.version == IMAGE_STAGE_VERSION
             });
-        Ok(!outdated
+        Ok(current
             && self.store.assets().get(asset_id)?.perceptual_hash.is_some()
             && self.thumbnail_path(asset_id, ThumbnailSize::Grid).is_file()
             && self
@@ -719,9 +723,20 @@ impl Library {
         self.store
             .colors()
             .set_auto(asset_id, &colors, "lab-kmeans-v1")?;
+        // The decode above is reduced, so the original size comes from the
+        // header. A size that cannot be read is left unknown like EXIF.
+        let size = PlatformDecoder
+            .dimensions(source, format, &limits)
+            .inspect_err(|error| {
+                log::warn!("asset {asset_id}: size could not be read: {error}");
+            })
+            .ok();
         let metadata = extract_exif(source, format);
         self.store.assets().set_metadata(&AssetMetadata {
             asset_id,
+            width: size.map(|(width, _)| width),
+            height: size.map(|(_, height)| height),
+            captured_at: metadata.captured_at,
             camera_make: metadata.camera_make,
             camera_model: metadata.camera_model,
             lens: metadata.lens,

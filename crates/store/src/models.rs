@@ -178,10 +178,13 @@ pub struct Setting {
     pub value: String,
 }
 
-/// EXIF-derived metadata cached alongside an asset.
+/// Metadata read from an image file: its upright size and EXIF fields.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AssetMetadata {
     pub asset_id: i64,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub captured_at: Option<i64>,
     pub camera_make: Option<String>,
     pub camera_model: Option<String>,
     pub lens: Option<String>,

@@ -2023,3 +2023,41 @@ fn files_with_the_wrong_extension_are_processed_by_content() {
     let detail = library.asset_detail(page.items[0].id).expect("detail");
     assert_eq!(detail.summary.thumbnail, ThumbnailState::Ready);
 }
+
+#[test]
+fn indexing_stores_the_upright_size_and_the_capture_time() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    let mut jpeg = std::io::Cursor::new(Vec::new());
+    DynamicImage::ImageRgb8(image::RgbImage::from_pixel(6, 4, image::Rgb([20, 90, 160])))
+        .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+        .expect("encode jpeg");
+    let mut jpeg = jpeg.into_inner();
+    // EXIF in IFD0: orientation 6 (rotate 90°) and DateTimeOriginal.
+    let mut tiff = b"II\x2A\x00\x08\x00\x00\x00".to_vec();
+    tiff.extend_from_slice(&2_u16.to_le_bytes());
+    for (tag, kind, count, value) in [(0x0112_u16, 3_u16, 1_u32, 6_u32), (0x9003, 2, 20, 38)] {
+        tiff.extend_from_slice(&tag.to_le_bytes());
+        tiff.extend_from_slice(&kind.to_le_bytes());
+        tiff.extend_from_slice(&count.to_le_bytes());
+        tiff.extend_from_slice(&value.to_le_bytes());
+    }
+    tiff.extend_from_slice(&0_u32.to_le_bytes());
+    tiff.extend_from_slice(b"2024:05:06 07:08:09\0");
+    let mut segment = vec![0xFF, 0xE1];
+    let length = u16::try_from(tiff.len() + 8).expect("small fixture");
+    segment.extend_from_slice(&length.to_be_bytes());
+    segment.extend_from_slice(b"Exif\0\0");
+    segment.extend_from_slice(&tiff);
+    jpeg.splice(2..2, segment);
+    fs::write(media.path().join("rotated.jpg"), jpeg).expect("write");
+
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "テスト").expect("add root");
+    library.scan_root(root.id).expect("scan");
+    let page = library.asset_page(0, 10).expect("page");
+    assert_eq!(page.items.len(), 1);
+    let summary = &page.items[0];
+    assert_eq!((summary.width, summary.height), (Some(4), Some(6)));
+    assert_eq!(summary.captured_at, Some(1_714_979_289));
+}

@@ -615,6 +615,25 @@ fn an_outdated_image_stage_is_redone_without_its_independent_stages() {
 }
 
 #[test]
+fn a_scan_after_a_version_change_regenerates_existing_results() {
+    let fixture = fully_processed(1);
+    let library = &fixture.library;
+    let asset_id = fixture.asset_ids()[0];
+    set_version(library, asset_id, Stage::Thumbnail, "thumbnail-v0");
+    let thumbnail = library.thumbnail_path(asset_id, ThumbnailSize::Grid);
+    std::fs::write(&thumbnail, b"old").expect("mark thumbnail");
+
+    // The scan marks the stage pending with the current version; the queued
+    // job must still redo the work although the old thumbnails exist.
+    let root_id = library.list_roots().expect("roots")[0].root.id;
+    library.sync_root(root_id).expect("sync");
+    assert!(!library.is_image_processed(asset_id).expect("processed"));
+    library.run_queued_image_jobs().expect("images");
+    assert_ne!(std::fs::read(&thumbnail).expect("thumbnail"), b"old");
+    assert!(library.is_image_processed(asset_id).expect("processed"));
+}
+
+#[test]
 fn a_new_model_version_redoes_embeddings_and_their_downstream_stages_only() {
     let fixture = fully_processed(2);
     let library = &fixture.library;
