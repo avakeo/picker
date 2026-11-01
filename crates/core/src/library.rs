@@ -26,7 +26,8 @@ use crate::portable::{PortableAlbum, PortableColors, PortableFeedback, PortableR
 /// v2: thumbnails keep the aspect ratio (v1 stretched them to squares).
 /// v4: the metadata stage stores the size and the capture time (v3 was
 /// only recorded by an unpublished build that skipped the work).
-pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v4";
+/// v5: the metadata stage stores the format detected from the content.
+pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v5";
 /// Decisions on a custom tag after which its suggestions are recomputed.
 pub const RETRAIN_AFTER_FEEDBACK: usize = 5;
 /// Version recorded for the zero-shot auto-tag stage.
@@ -734,6 +735,7 @@ impl Library {
         let metadata = extract_exif(source, format);
         self.store.assets().set_metadata(&AssetMetadata {
             asset_id,
+            format: Some(format.as_str().to_owned()),
             width: size.map(|(width, _)| width),
             height: size.map(|(_, height)| height),
             captured_at: metadata.captured_at,

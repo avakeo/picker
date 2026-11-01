@@ -178,10 +178,12 @@ pub struct Setting {
     pub value: String,
 }
 
-/// Metadata read from an image file: its upright size and EXIF fields.
+/// Metadata read from an image file: its format, upright size and EXIF
+/// fields.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AssetMetadata {
     pub asset_id: i64,
+    pub format: Option<String>,
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub captured_at: Option<i64>,

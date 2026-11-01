@@ -2022,6 +2022,8 @@ fn files_with_the_wrong_extension_are_processed_by_content() {
     assert_eq!(page.items.len(), 1);
     let detail = library.asset_detail(page.items[0].id).expect("detail");
     assert_eq!(detail.summary.thumbnail, ThumbnailState::Ready);
+    // The stored format follows the content, so the JPEG filter finds it.
+    assert_eq!(detail.summary.format.as_deref(), Some("jpeg"));
 }
 
 #[test]
@@ -2060,4 +2062,6 @@ fn indexing_stores_the_upright_size_and_the_capture_time() {
     let summary = &page.items[0];
     assert_eq!((summary.width, summary.height), (Some(4), Some(6)));
     assert_eq!(summary.captured_at, Some(1_714_979_289));
+    // A `.jpg` file is stored with the same name as the filter uses.
+    assert_eq!(summary.format.as_deref(), Some("jpeg"));
 }

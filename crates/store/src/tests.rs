@@ -381,6 +381,7 @@ fn asset_metadata_round_trips_and_rejects_unknown_assets() -> Result<()> {
             width: Some(640),
             height: Some(480),
             captured_at: Some(1_700_000_000),
+            format: Some("jpeg".into()),
             ..AssetMetadata::default()
         })
     );
@@ -399,6 +400,7 @@ fn asset_metadata_round_trips_and_rejects_unknown_assets() -> Result<()> {
         width: Some(4032),
         height: Some(3024),
         captured_at: Some(1_700_000_000),
+        format: Some("heic".into()),
     };
     store.assets().set_metadata(&metadata)?;
     assert_eq!(store.assets().metadata(created.id)?, Some(metadata));
@@ -407,6 +409,7 @@ fn asset_metadata_round_trips_and_rejects_unknown_assets() -> Result<()> {
         (stored.width, stored.height, stored.captured_at),
         (Some(4032), Some(3024), Some(1_700_000_000))
     );
+    assert_eq!(stored.format.as_deref(), Some("heic"));
 
     let missing = AssetMetadata {
         asset_id: created.id + 100,

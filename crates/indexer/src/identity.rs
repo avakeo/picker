@@ -133,10 +133,9 @@ impl<'store> IdentityResolver<'store> {
                 file_size: file.file_size,
                 width: None,
                 height: None,
-                format: file
-                    .absolute_path
-                    .extension()
-                    .and_then(|extension| extension.to_str()),
+                // The metadata stage stores the format detected from the
+                // content; the extension can be wrong or differ in spelling.
+                format: None,
                 captured_at: None,
                 perceptual_hash: None,
             })?
