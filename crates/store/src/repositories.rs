@@ -518,10 +518,34 @@ impl<'connection> StageStateRepository<'connection> {
     }
 
     /// Returns counts grouped by stage and status for the progress UI.
+    /// Counts assets per stage and status for the progress display.
+    ///
+    /// An asset with a waiting or running job counts as pending even when
+    /// its state is not recorded yet (model stages record a state only when
+    /// they finish) or still holds an older result. Jobs of the image stages
+    /// count under `thumbnail`, where their shared state is recorded.
     pub fn counts(&self) -> Result<Vec<(Stage, StageStatus, u32)>> {
-        let mut statement = self
-            .connection
-            .prepare("SELECT stage, status, COUNT(*) FROM stage_states GROUP BY stage, status")?;
+        let mut statement = self.connection.prepare(
+            "WITH waiting AS (
+                 SELECT DISTINCT asset_id,
+                        CASE WHEN stage IN ('hash', 'metadata', 'thumbnail', 'phash')
+                             THEN 'thumbnail' ELSE stage END AS stage
+                 FROM jobs
+                 WHERE asset_id IS NOT NULL AND status IN ('pending', 'running', 'paused')
+             )
+             SELECT stage, status, COUNT(*) FROM (
+                 SELECT s.stage,
+                        CASE WHEN w.asset_id IS NULL THEN s.status ELSE 'pending' END AS status
+                 FROM stage_states s
+                 LEFT JOIN waiting w ON w.asset_id = s.asset_id AND w.stage = s.stage
+                 UNION ALL
+                 SELECT w.stage, 'pending' FROM waiting w
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM stage_states s
+                     WHERE s.asset_id = w.asset_id AND s.stage = w.stage)
+             )
+             GROUP BY stage, status",
+        )?;
         let rows = statement.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,

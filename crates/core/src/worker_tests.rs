@@ -413,6 +413,42 @@ fn model_stages_follow_image_jobs_once_a_model_is_set() {
 }
 
 #[test]
+fn queued_model_work_shows_as_pending_and_tags_follow_each_embedding() {
+    let fixture = Fixture::with_images(3);
+    let library = &fixture.library;
+    library.run_queued_image_jobs().expect("images");
+    library.set_worker_embedder(Some(embedder()));
+    let progress = |stage: Stage| {
+        let status = library.index_status().expect("status");
+        let entry = status
+            .stages
+            .into_iter()
+            .find(|entry| entry.stage == stage)
+            .expect("stage");
+        (entry.completed, entry.pending)
+    };
+    // Embedding jobs are queued before any embedding state is recorded.
+    assert_eq!(progress(Stage::Embedding), (0, 3));
+
+    let stage_of = |run: Option<crate::JobRun>| {
+        let run = run.expect("a job ran");
+        library.store().jobs().get(run.job_id).expect("job").stage
+    };
+    assert_eq!(
+        stage_of(library.run_next_ml_job().expect("ml")),
+        Stage::Embedding
+    );
+    assert_eq!(progress(Stage::Embedding), (1, 2));
+    assert_eq!(progress(Stage::AutoTag), (0, 1));
+    // The new embedding's tags run before the remaining embeddings.
+    assert_eq!(
+        stage_of(library.run_next_ml_job().expect("ml")),
+        Stage::AutoTag
+    );
+    assert_eq!(progress(Stage::AutoTag), (1, 0));
+}
+
+#[test]
 fn ui_library_picks_up_vectors_written_by_workers() {
     let fixture = Fixture::with_images(2);
     fixture.library.run_queued_image_jobs().expect("images");

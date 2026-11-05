@@ -726,3 +726,42 @@ fn outdated_stage_versions_are_queued_once() -> Result<()> {
     assert!(store.jobs().enqueue_outdated(Stage::AutoTag, "").is_err());
     Ok(())
 }
+
+#[test]
+fn stage_counts_include_queued_jobs() -> Result<()> {
+    let store = Store::open_in_memory()?;
+    let done = store.assets().insert(&asset(1))?.id;
+    let queued = store.assets().insert(&asset(2))?.id;
+    let redone = store.assets().insert(&asset(3))?.id;
+    for id in [done, redone] {
+        store.stage_states().upsert(
+            StageTarget::Asset(id),
+            Stage::Embedding,
+            StageStatus::Succeeded,
+            "v1",
+            None,
+        )?;
+    }
+    // No state yet, and a finished asset queued again.
+    for id in [queued, redone] {
+        store
+            .jobs()
+            .enqueue(StageTarget::Asset(id), Stage::Embedding, 0, 3)?;
+    }
+    // Image jobs count under the thumbnail state they share.
+    store
+        .jobs()
+        .enqueue(StageTarget::Asset(done), Stage::Metadata, 0, 3)?;
+
+    let mut counts = store.stage_states().counts()?;
+    counts.sort_by_key(|(stage, status, _)| (stage.as_str(), status.as_str()));
+    assert_eq!(
+        counts,
+        vec![
+            (Stage::Embedding, StageStatus::Pending, 2),
+            (Stage::Embedding, StageStatus::Succeeded, 1),
+            (Stage::Thumbnail, StageStatus::Pending, 1),
+        ]
+    );
+    Ok(())
+}

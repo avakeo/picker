@@ -57,7 +57,9 @@ impl Library {
             Ok(()) => {
                 if job.stage == Stage::Embedding {
                     // Downstream stages read the embedding: redo them for a
-                    // new one, and run the ones that never succeeded.
+                    // new one, and run the ones that never succeeded. They
+                    // go ahead of the remaining embeddings, so tags appear
+                    // while a large library is still being embedded.
                     for stage in [Stage::AutoTag, Stage::CustomSuggest] {
                         if !redo_downstream && self.stage_succeeded(asset_id, stage)? {
                             continue;
@@ -65,7 +67,7 @@ impl Library {
                         self.store().jobs().enqueue(
                             StageTarget::Asset(asset_id),
                             stage,
-                            job.priority,
+                            job.priority.saturating_add(1),
                             3,
                         )?;
                     }
