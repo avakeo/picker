@@ -445,6 +445,99 @@ fn zero_shot_suggestions_never_replace_rejected_tags() {
 }
 
 #[test]
+fn a_vocabulary_tag_converted_to_custom_is_not_recreated_or_auto_tagged() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    let database = cache.path().join("library.sqlite3");
+    let beach = {
+        let library = Library::open(&database, cache.path()).expect("library");
+        let root = library.add_root(media.path(), "root").expect("root");
+        library.scan_root(root.id).expect("scan");
+        library
+            .set_embedder(Some(std::sync::Arc::new(BeachEmbedder)))
+            .expect("embed");
+        library.index_embeddings(10).expect("index");
+        library.auto_tag(10).expect("auto tag");
+        let beach = library
+            .store()
+            .tags()
+            .find("general", "scene.beach")
+            .expect("find")
+            .expect("beach tag");
+        library.convert_tag_to_custom(beach.id).expect("convert");
+        beach.id
+    };
+
+    // A restart rebuilds the tagger from the vocabulary.
+    let library = Library::open(&database, cache.path()).expect("reopen");
+    library
+        .set_embedder(Some(std::sync::Arc::new(BeachEmbedder)))
+        .expect("embed");
+    let asset_id = library.asset_page(0, 10).expect("page").items[0].id;
+    library
+        .store()
+        .stage_states()
+        .upsert(
+            picker_store::StageTarget::Asset(asset_id),
+            picker_store::Stage::AutoTag,
+            picker_store::StageStatus::Failed,
+            crate::library::AUTO_TAG_STAGE_VERSION,
+            Some("retry"),
+        )
+        .expect("reset stage");
+    library.auto_tag(10).expect("auto tag again");
+
+    let beaches: Vec<_> = library
+        .list_tags()
+        .expect("tags")
+        .into_iter()
+        .filter(|tag| tag.tag.display_name_ja == "海辺")
+        .collect();
+    assert_eq!(beaches.len(), 1);
+    assert_eq!(beaches[0].tag.id, beach);
+    let zero_shot_on_beach = library
+        .store()
+        .tag_assignments()
+        .get_optional(asset_id, beach)
+        .expect("assignment")
+        .is_some_and(|assignment| assignment.source == picker_store::AssignmentSource::ZeroShot);
+    assert!(!zero_shot_on_beach);
+}
+
+#[test]
+fn converting_a_vocabulary_tag_stops_its_zero_shot_suggestions_at_once() {
+    let media = tempfile::tempdir().expect("media");
+    let cache = tempfile::tempdir().expect("cache");
+    fs::write(media.path().join("one.png"), png_bytes(10)).expect("write");
+    let library = Library::open_in_memory(cache.path()).expect("library");
+    let root = library.add_root(media.path(), "root").expect("root");
+    library.scan_root(root.id).expect("scan");
+    library
+        .set_embedder(Some(std::sync::Arc::new(BeachEmbedder)))
+        .expect("embed");
+    library.index_embeddings(10).expect("index");
+    library.auto_tag(10).expect("auto tag");
+    let asset_id = library.asset_page(0, 10).expect("page").items[0].id;
+    let beach = library
+        .store()
+        .tags()
+        .find("general", "scene.beach")
+        .expect("find")
+        .expect("beach tag")
+        .id;
+    library.convert_tag_to_custom(beach).expect("convert");
+
+    assert_eq!(library.auto_tag_asset(asset_id).expect("auto tag"), 1);
+    assert!(library
+        .store()
+        .tag_assignments()
+        .get_optional(asset_id, beach)
+        .expect("assignment")
+        .is_none());
+}
+
+#[test]
 fn feedback_events_record_decisions_and_can_be_undone() {
     let media = tempfile::tempdir().expect("media");
     let cache = tempfile::tempdir().expect("cache");

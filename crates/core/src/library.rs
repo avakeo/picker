@@ -1174,6 +1174,12 @@ impl Library {
             .map_err(|error| LibraryError::InvalidInput(error.to_string()))?;
         let mut tag_ids = std::collections::HashMap::with_capacity(vocabulary.len());
         for entry in &vocabulary {
+            // A converted tag learns from the user's decisions instead
+            // (design.md 8.4). Recreating it under "general" would split it
+            // in two, so it is left out of the zero-shot suggestions.
+            if self.store.tags().find("custom", &entry.id)?.is_some() {
+                continue;
+            }
             let tag = match self.store.tags().find("general", &entry.id)? {
                 Some(tag) => tag,
                 None => self.store.tags().create(&NewTag {
@@ -1510,7 +1516,13 @@ impl Library {
     }
 
     pub fn convert_tag_to_custom(&self, tag_id: i64) -> Result<Tag> {
-        Ok(self.store.tags().convert_to_custom(tag_id)?)
+        let tag = self.store.tags().convert_to_custom(tag_id)?;
+        // The cached tagger still maps the vocabulary to this tag.
+        *self
+            .tagger
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        Ok(tag)
     }
 
     /// Recomputes prototype (or tag-name) suggestions for one custom tag.
