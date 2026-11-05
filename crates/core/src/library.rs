@@ -31,7 +31,7 @@ pub(crate) const IMAGE_STAGE_VERSION: &str = "thumbnail-v5";
 /// Decisions on a custom tag after which its suggestions are recomputed.
 pub const RETRAIN_AFTER_FEEDBACK: usize = 5;
 /// Version recorded for the zero-shot auto-tag stage.
-pub(crate) const AUTO_TAG_STAGE_VERSION: &str = "zero-shot-v1";
+pub(crate) const AUTO_TAG_STAGE_VERSION: &str = "zero-shot-v3";
 
 /// Portable representation of the non-regenerable tag data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

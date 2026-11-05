@@ -366,6 +366,39 @@ fn tag_name_matches_outrank_semantic_results() {
     assert_eq!(results[1].0, other);
 }
 
+/// Puts the beach prompts on their own axis, so the beach tag stands out
+/// from the rest of the vocabulary for every image.
+struct BeachEmbedder;
+
+impl picker_ml::Embedder for BeachEmbedder {
+    fn embed_image(
+        &self,
+        _path: &std::path::Path,
+    ) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        Ok(vec![1.0, 0.0])
+    }
+
+    fn embed_text(&self, text: &str) -> std::result::Result<Vec<f32>, picker_ml::EmbeddingError> {
+        if text.contains("海辺") {
+            Ok(vec![1.0, 0.0])
+        } else {
+            Ok(vec![0.0, 1.0])
+        }
+    }
+
+    fn dimensions(&self) -> usize {
+        2
+    }
+
+    fn model_id(&self) -> &str {
+        "mock"
+    }
+
+    fn model_version(&self) -> &str {
+        "v1"
+    }
+}
+
 #[test]
 fn zero_shot_suggestions_never_replace_rejected_tags() {
     let media = tempfile::tempdir().expect("media");
@@ -376,7 +409,7 @@ fn zero_shot_suggestions_never_replace_rejected_tags() {
     library.scan_root(root.id).expect("scan");
     let asset_id = library.asset_page(0, 10).expect("page").items[0].id;
     library
-        .set_embedder(Some(std::sync::Arc::new(MockEmbedder)))
+        .set_embedder(Some(std::sync::Arc::new(BeachEmbedder)))
         .expect("embed");
     library.index_embeddings(10).expect("index");
     let suggested = library.auto_tag(10).expect("auto tag");
@@ -398,7 +431,7 @@ fn zero_shot_suggestions_never_replace_rejected_tags() {
             picker_store::StageTarget::Asset(asset_id),
             picker_store::Stage::AutoTag,
             picker_store::StageStatus::Failed,
-            "zero-shot-v1",
+            crate::library::AUTO_TAG_STAGE_VERSION,
             Some("retry"),
         )
         .expect("reset stage");

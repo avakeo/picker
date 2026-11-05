@@ -5,7 +5,7 @@
   "display_name_ja": "海辺",
   "display_name_en": "Beach",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.sunset",
@@ -13,7 +13,7 @@
   "display_name_ja": "夕日",
   "display_name_en": "Sunset",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.sunrise",
@@ -21,7 +21,7 @@
   "display_name_ja": "日の出",
   "display_name_en": "Sunrise",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.mountain",
@@ -29,7 +29,7 @@
   "display_name_ja": "山",
   "display_name_en": "Mountain",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.forest",
@@ -37,7 +37,7 @@
   "display_name_ja": "森",
   "display_name_en": "Forest",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.lake",
@@ -45,7 +45,7 @@
   "display_name_ja": "湖",
   "display_name_en": "Lake",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.river",
@@ -53,7 +53,7 @@
   "display_name_ja": "川",
   "display_name_en": "River",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.waterfall",
@@ -61,7 +61,7 @@
   "display_name_ja": "滝",
   "display_name_en": "Waterfall",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.ocean",
@@ -69,7 +69,7 @@
   "display_name_ja": "海",
   "display_name_en": "Ocean",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.sky",
@@ -77,7 +77,7 @@
   "display_name_ja": "空",
   "display_name_en": "Sky",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.cloud",
@@ -85,7 +85,7 @@
   "display_name_ja": "雲",
   "display_name_en": "Cloud",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.city",
@@ -93,7 +93,7 @@
   "display_name_ja": "街",
   "display_name_en": "City",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.street",
@@ -101,7 +101,7 @@
   "display_name_ja": "通り",
   "display_name_en": "Street",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.building",
@@ -109,7 +109,7 @@
   "display_name_ja": "建物",
   "display_name_en": "Building",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.temple",
@@ -117,7 +117,7 @@
   "display_name_ja": "寺",
   "display_name_en": "Temple",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.shrine",
@@ -125,7 +125,7 @@
   "display_name_ja": "神社",
   "display_name_en": "Shrine",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.castle",
@@ -133,7 +133,7 @@
   "display_name_ja": "城",
   "display_name_en": "Castle",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.bridge",
@@ -141,7 +141,7 @@
   "display_name_ja": "橋",
   "display_name_en": "Bridge",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.park",
@@ -149,7 +149,7 @@
   "display_name_ja": "公園",
   "display_name_en": "Park",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.garden",
@@ -157,7 +157,7 @@
   "display_name_ja": "庭園",
   "display_name_en": "Garden",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.field",
@@ -165,7 +165,7 @@
   "display_name_ja": "野原",
   "display_name_en": "Field",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.desert",
@@ -173,7 +173,7 @@
   "display_name_ja": "砂漠",
   "display_name_en": "Desert",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.snow_landscape",
@@ -181,7 +181,7 @@
   "display_name_ja": "雪景色",
   "display_name_en": "Snow Landscape",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.night_city",
@@ -189,7 +189,7 @@
   "display_name_ja": "夜景",
   "display_name_en": "Night City",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.interior",
@@ -197,7 +197,7 @@
   "display_name_ja": "室内",
   "display_name_en": "Interior",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.room",
@@ -205,7 +205,7 @@
   "display_name_ja": "部屋",
   "display_name_en": "Room",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.kitchen",
@@ -213,7 +213,7 @@
   "display_name_ja": "台所",
   "display_name_en": "Kitchen",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.cafe",
@@ -221,7 +221,7 @@
   "display_name_ja": "カフェ",
   "display_name_en": "Cafe",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.restaurant",
@@ -229,7 +229,7 @@
   "display_name_ja": "レストラン",
   "display_name_en": "Restaurant",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.office",
@@ -237,7 +237,7 @@
   "display_name_ja": "オフィス",
   "display_name_en": "Office",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.station",
@@ -245,7 +245,7 @@
   "display_name_ja": "駅",
   "display_name_en": "Station",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.airport",
@@ -253,7 +253,7 @@
   "display_name_ja": "空港",
   "display_name_en": "Airport",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.beach_at_sunset",
@@ -261,7 +261,7 @@
   "display_name_ja": "夕日の海辺",
   "display_name_en": "Beach At Sunset",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.cherry_blossom",
@@ -269,7 +269,7 @@
   "display_name_ja": "桜",
   "display_name_en": "Cherry Blossom",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.autumn_leaves",
@@ -277,7 +277,7 @@
   "display_name_ja": "紅葉",
   "display_name_en": "Autumn Leaves",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.flower_field",
@@ -285,7 +285,7 @@
   "display_name_ja": "花畑",
   "display_name_en": "Flower Field",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.rice_field",
@@ -293,7 +293,7 @@
   "display_name_ja": "田んぼ",
   "display_name_en": "Rice Field",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.harbor",
@@ -301,7 +301,7 @@
   "display_name_ja": "港",
   "display_name_en": "Harbor",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.ruins",
@@ -309,7 +309,7 @@
   "display_name_ja": "遺跡",
   "display_name_en": "Ruins",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.campsite",
@@ -317,7 +317,7 @@
   "display_name_ja": "キャンプ場",
   "display_name_en": "Campsite",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.amusement_park",
@@ -325,7 +325,7 @@
   "display_name_ja": "遊園地",
   "display_name_en": "Amusement Park",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.library",
@@ -333,7 +333,7 @@
   "display_name_ja": "図書館",
   "display_name_en": "Library",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.museum",
@@ -341,7 +341,7 @@
   "display_name_ja": "美術館",
   "display_name_en": "Museum",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.zoo",
@@ -349,7 +349,7 @@
   "display_name_ja": "動物園",
   "display_name_en": "Zoo",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.aquarium",
@@ -357,7 +357,7 @@
   "display_name_ja": "水族館",
   "display_name_en": "Aquarium",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "scene.festival",
@@ -365,7 +365,7 @@
   "display_name_ja": "祭り",
   "display_name_en": "Festival",
   "category": "scene",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.tree",
@@ -373,7 +373,7 @@
   "display_name_ja": "木",
   "display_name_en": "Tree",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.flower",
@@ -381,7 +381,7 @@
   "display_name_ja": "花",
   "display_name_en": "Flower",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.grass",
@@ -389,7 +389,7 @@
   "display_name_ja": "草",
   "display_name_en": "Grass",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.leaf",
@@ -397,7 +397,7 @@
   "display_name_ja": "葉",
   "display_name_en": "Leaf",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.rock",
@@ -405,7 +405,7 @@
   "display_name_ja": "岩",
   "display_name_en": "Rock",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.sand",
@@ -413,7 +413,7 @@
   "display_name_ja": "砂",
   "display_name_en": "Sand",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.rain",
@@ -421,7 +421,7 @@
   "display_name_ja": "雨",
   "display_name_en": "Rain",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.snow",
@@ -429,7 +429,7 @@
   "display_name_ja": "雪",
   "display_name_en": "Snow",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.fog",
@@ -437,7 +437,7 @@
   "display_name_ja": "霧",
   "display_name_en": "Fog",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.rainbow",
@@ -445,7 +445,7 @@
   "display_name_ja": "虹",
   "display_name_en": "Rainbow",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.wave",
@@ -453,7 +453,7 @@
   "display_name_ja": "波",
   "display_name_en": "Wave",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.island",
@@ -461,7 +461,7 @@
   "display_name_ja": "島",
   "display_name_en": "Island",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.volcano",
@@ -469,7 +469,7 @@
   "display_name_ja": "火山",
   "display_name_en": "Volcano",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.cave",
@@ -477,7 +477,7 @@
   "display_name_ja": "洞窟",
   "display_name_en": "Cave",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.cactus",
@@ -485,7 +485,7 @@
   "display_name_ja": "サボテン",
   "display_name_en": "Cactus",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.mushroom",
@@ -493,7 +493,7 @@
   "display_name_ja": "きのこ",
   "display_name_en": "Mushroom",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.pine_tree",
@@ -501,7 +501,7 @@
   "display_name_ja": "松の木",
   "display_name_en": "Pine Tree",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.palm_tree",
@@ -509,7 +509,7 @@
   "display_name_ja": "ヤシの木",
   "display_name_en": "Palm Tree",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.bamboo",
@@ -517,7 +517,7 @@
   "display_name_ja": "竹",
   "display_name_en": "Bamboo",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.lotus",
@@ -525,7 +525,7 @@
   "display_name_ja": "蓮",
   "display_name_en": "Lotus",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.sunflower",
@@ -533,7 +533,7 @@
   "display_name_ja": "ひまわり",
   "display_name_en": "Sunflower",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.rose",
@@ -541,7 +541,7 @@
   "display_name_ja": "バラ",
   "display_name_en": "Rose",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.tulip",
@@ -549,7 +549,7 @@
   "display_name_ja": "チューリップ",
   "display_name_en": "Tulip",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.moon",
@@ -557,7 +557,7 @@
   "display_name_ja": "月",
   "display_name_en": "Moon",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.star",
@@ -565,7 +565,7 @@
   "display_name_ja": "星",
   "display_name_en": "Star",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.milky_way",
@@ -573,7 +573,7 @@
   "display_name_ja": "天の川",
   "display_name_en": "Milky Way",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.lightning",
@@ -581,7 +581,7 @@
   "display_name_ja": "稲妻",
   "display_name_en": "Lightning",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "nature.storm",
@@ -589,7 +589,7 @@
   "display_name_ja": "嵐",
   "display_name_en": "Storm",
   "category": "nature",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.cat",
@@ -597,7 +597,7 @@
   "display_name_ja": "猫",
   "display_name_en": "Cat",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.dog",
@@ -605,7 +605,7 @@
   "display_name_ja": "犬",
   "display_name_en": "Dog",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.bird",
@@ -613,7 +613,7 @@
   "display_name_ja": "鳥",
   "display_name_en": "Bird",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.fish",
@@ -621,7 +621,7 @@
   "display_name_ja": "魚",
   "display_name_en": "Fish",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.horse",
@@ -629,7 +629,7 @@
   "display_name_ja": "馬",
   "display_name_en": "Horse",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.cow",
@@ -637,7 +637,7 @@
   "display_name_ja": "牛",
   "display_name_en": "Cow",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.sheep",
@@ -645,7 +645,7 @@
   "display_name_ja": "羊",
   "display_name_en": "Sheep",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.rabbit",
@@ -653,7 +653,7 @@
   "display_name_ja": "うさぎ",
   "display_name_en": "Rabbit",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.fox",
@@ -661,7 +661,7 @@
   "display_name_ja": "きつね",
   "display_name_en": "Fox",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.deer",
@@ -669,7 +669,7 @@
   "display_name_ja": "鹿",
   "display_name_en": "Deer",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.bear",
@@ -677,7 +677,7 @@
   "display_name_ja": "熊",
   "display_name_en": "Bear",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.tiger",
@@ -685,7 +685,7 @@
   "display_name_ja": "虎",
   "display_name_en": "Tiger",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.lion",
@@ -693,7 +693,7 @@
   "display_name_ja": "ライオン",
   "display_name_en": "Lion",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.elephant",
@@ -701,7 +701,7 @@
   "display_name_ja": "象",
   "display_name_en": "Elephant",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.monkey",
@@ -709,7 +709,7 @@
   "display_name_ja": "猿",
   "display_name_en": "Monkey",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.penguin",
@@ -717,7 +717,7 @@
   "display_name_ja": "ペンギン",
   "display_name_en": "Penguin",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.seagull",
@@ -725,7 +725,7 @@
   "display_name_ja": "カモメ",
   "display_name_en": "Seagull",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.butterfly",
@@ -733,7 +733,7 @@
   "display_name_ja": "蝶",
   "display_name_en": "Butterfly",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.bee",
@@ -741,7 +741,7 @@
   "display_name_ja": "蜂",
   "display_name_en": "Bee",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.dragonfly",
@@ -749,7 +749,7 @@
   "display_name_ja": "トンボ",
   "display_name_en": "Dragonfly",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.frog",
@@ -757,7 +757,7 @@
   "display_name_ja": "蛙",
   "display_name_en": "Frog",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.turtle",
@@ -765,7 +765,7 @@
   "display_name_ja": "亀",
   "display_name_en": "Turtle",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.whale",
@@ -773,7 +773,7 @@
   "display_name_ja": "鯨",
   "display_name_en": "Whale",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.dolphin",
@@ -781,7 +781,7 @@
   "display_name_ja": "イルカ",
   "display_name_en": "Dolphin",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "animal.octopus",
@@ -789,7 +789,7 @@
   "display_name_ja": "蛸",
   "display_name_en": "Octopus",
   "category": "animal",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.sushi",
@@ -797,7 +797,7 @@
   "display_name_ja": "寿司",
   "display_name_en": "Sushi",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.ramen",
@@ -805,7 +805,7 @@
   "display_name_ja": "ラーメン",
   "display_name_en": "Ramen",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.pizza",
@@ -813,7 +813,7 @@
   "display_name_ja": "ピザ",
   "display_name_en": "Pizza",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.bread",
@@ -821,7 +821,7 @@
   "display_name_ja": "パン",
   "display_name_en": "Bread",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.cake",
@@ -829,7 +829,7 @@
   "display_name_ja": "ケーキ",
   "display_name_en": "Cake",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.coffee",
@@ -837,7 +837,7 @@
   "display_name_ja": "コーヒー",
   "display_name_en": "Coffee",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.tea",
@@ -845,7 +845,7 @@
   "display_name_ja": "お茶",
   "display_name_en": "Tea",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.beer",
@@ -853,7 +853,7 @@
   "display_name_ja": "ビール",
   "display_name_en": "Beer",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.wine",
@@ -861,7 +861,7 @@
   "display_name_ja": "ワイン",
   "display_name_en": "Wine",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.fruit",
@@ -869,7 +869,7 @@
   "display_name_ja": "果物",
   "display_name_en": "Fruit",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.apple",
@@ -877,7 +877,7 @@
   "display_name_ja": "りんご",
   "display_name_en": "Apple",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.orange_fruit",
@@ -885,7 +885,7 @@
   "display_name_ja": "オレンジ",
   "display_name_en": "Orange Fruit",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.banana",
@@ -893,7 +893,7 @@
   "display_name_ja": "バナナ",
   "display_name_en": "Banana",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.strawberry",
@@ -901,7 +901,7 @@
   "display_name_ja": "いちご",
   "display_name_en": "Strawberry",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.watermelon",
@@ -909,7 +909,7 @@
   "display_name_ja": "すいか",
   "display_name_en": "Watermelon",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.salad",
@@ -917,7 +917,7 @@
   "display_name_ja": "サラダ",
   "display_name_en": "Salad",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.rice_bowl",
@@ -925,7 +925,7 @@
   "display_name_ja": "どんぶり",
   "display_name_en": "Rice Bowl",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.noodles",
@@ -933,7 +933,7 @@
   "display_name_ja": "麺",
   "display_name_en": "Noodles",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.ice_cream",
@@ -941,7 +941,7 @@
   "display_name_ja": "アイスクリーム",
   "display_name_en": "Ice Cream",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.chocolate",
@@ -949,7 +949,7 @@
   "display_name_ja": "チョコレート",
   "display_name_en": "Chocolate",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.hamburger",
@@ -957,7 +957,7 @@
   "display_name_ja": "ハンバーガー",
   "display_name_en": "Hamburger",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.curry",
@@ -965,7 +965,7 @@
   "display_name_ja": "カレー",
   "display_name_en": "Curry",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.tempura",
@@ -973,7 +973,7 @@
   "display_name_ja": "天ぷら",
   "display_name_en": "Tempura",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.bento",
@@ -981,7 +981,7 @@
   "display_name_ja": "弁当",
   "display_name_en": "Bento",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "food.breakfast",
@@ -989,7 +989,7 @@
   "display_name_ja": "朝食",
   "display_name_en": "Breakfast",
   "category": "food",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.car",
@@ -997,7 +997,7 @@
   "display_name_ja": "車",
   "display_name_en": "Car",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.bicycle",
@@ -1005,7 +1005,7 @@
   "display_name_ja": "自転車",
   "display_name_en": "Bicycle",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.train",
@@ -1013,7 +1013,7 @@
   "display_name_ja": "電車",
   "display_name_en": "Train",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.airplane",
@@ -1021,7 +1021,7 @@
   "display_name_ja": "飛行機",
   "display_name_en": "Airplane",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.boat",
@@ -1029,7 +1029,7 @@
   "display_name_ja": "船",
   "display_name_en": "Boat",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.motorcycle",
@@ -1037,7 +1037,7 @@
   "display_name_ja": "バイク",
   "display_name_en": "Motorcycle",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.bus",
@@ -1045,7 +1045,7 @@
   "display_name_ja": "バス",
   "display_name_en": "Bus",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.book",
@@ -1053,7 +1053,7 @@
   "display_name_ja": "本",
   "display_name_en": "Book",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.computer",
@@ -1061,7 +1061,7 @@
   "display_name_ja": "コンピュータ",
   "display_name_en": "Computer",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.smartphone",
@@ -1069,7 +1069,7 @@
   "display_name_ja": "スマートフォン",
   "display_name_en": "Smartphone",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.camera",
@@ -1077,7 +1077,7 @@
   "display_name_ja": "カメラ",
   "display_name_en": "Camera",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.clock",
@@ -1085,7 +1085,7 @@
   "display_name_ja": "時計",
   "display_name_en": "Clock",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.chair",
@@ -1093,7 +1093,7 @@
   "display_name_ja": "椅子",
   "display_name_en": "Chair",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.table",
@@ -1101,7 +1101,7 @@
   "display_name_ja": "机",
   "display_name_en": "Table",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.lamp",
@@ -1109,7 +1109,7 @@
   "display_name_ja": "ランプ",
   "display_name_en": "Lamp",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.window",
@@ -1117,7 +1117,7 @@
   "display_name_ja": "窓",
   "display_name_en": "Window",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.door",
@@ -1125,7 +1125,7 @@
   "display_name_ja": "ドア",
   "display_name_en": "Door",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.stairs",
@@ -1133,7 +1133,7 @@
   "display_name_ja": "階段",
   "display_name_en": "Stairs",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.umbrella",
@@ -1141,7 +1141,7 @@
   "display_name_ja": "傘",
   "display_name_en": "Umbrella",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.bag",
@@ -1149,7 +1149,7 @@
   "display_name_ja": "かばん",
   "display_name_en": "Bag",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.shoes",
@@ -1157,7 +1157,7 @@
   "display_name_ja": "靴",
   "display_name_en": "Shoes",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.hat",
@@ -1165,7 +1165,7 @@
   "display_name_ja": "帽子",
   "display_name_en": "Hat",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.glasses",
@@ -1173,7 +1173,7 @@
   "display_name_ja": "眼鏡",
   "display_name_en": "Glasses",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.bottle",
@@ -1181,7 +1181,7 @@
   "display_name_ja": "瓶",
   "display_name_en": "Bottle",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.cup",
@@ -1189,7 +1189,7 @@
   "display_name_ja": "カップ",
   "display_name_en": "Cup",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.toy",
@@ -1197,7 +1197,7 @@
   "display_name_ja": "おもちゃ",
   "display_name_en": "Toy",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.sign",
@@ -1205,7 +1205,7 @@
   "display_name_ja": "看板",
   "display_name_en": "Sign",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.fence",
@@ -1213,7 +1213,7 @@
   "display_name_ja": "柵",
   "display_name_en": "Fence",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.road",
@@ -1221,7 +1221,7 @@
   "display_name_ja": "道路",
   "display_name_en": "Road",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "object.bicycle_path",
@@ -1229,7 +1229,7 @@
   "display_name_ja": "自転車道",
   "display_name_en": "Bicycle Path",
   "category": "object",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.person",
@@ -1237,7 +1237,7 @@
   "display_name_ja": "人",
   "display_name_en": "Person",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.man",
@@ -1245,7 +1245,7 @@
   "display_name_ja": "男性",
   "display_name_en": "Man",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.woman",
@@ -1253,7 +1253,7 @@
   "display_name_ja": "女性",
   "display_name_en": "Woman",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.child",
@@ -1261,7 +1261,7 @@
   "display_name_ja": "子供",
   "display_name_en": "Child",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.family",
@@ -1269,7 +1269,7 @@
   "display_name_ja": "家族",
   "display_name_en": "Family",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.friends",
@@ -1277,7 +1277,7 @@
   "display_name_ja": "友人",
   "display_name_en": "Friends",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.crowd",
@@ -1285,7 +1285,7 @@
   "display_name_ja": "群衆",
   "display_name_en": "Crowd",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.portrait",
@@ -1293,7 +1293,7 @@
   "display_name_ja": "ポートレート",
   "display_name_en": "Portrait",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.selfie",
@@ -1301,7 +1301,7 @@
   "display_name_ja": "自撮り",
   "display_name_en": "Selfie",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 4.0
  },
  {
   "id": "person.wedding",
@@ -1309,7 +1309,7 @@
   "display_name_ja": "結婚式",
   "display_name_en": "Wedding",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.business_person",
@@ -1317,7 +1317,7 @@
   "display_name_ja": "ビジネスマン",
   "display_name_en": "Business Person",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.athlete",
@@ -1325,7 +1325,7 @@
   "display_name_ja": "選手",
   "display_name_en": "Athlete",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.musician",
@@ -1333,7 +1333,7 @@
   "display_name_ja": "音楽家",
   "display_name_en": "Musician",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.chef",
@@ -1341,7 +1341,7 @@
   "display_name_ja": "料理人",
   "display_name_en": "Chef",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "person.scientist",
@@ -1349,7 +1349,7 @@
   "display_name_ja": "科学者",
   "display_name_en": "Scientist",
   "category": "person",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.walking",
@@ -1357,7 +1357,7 @@
   "display_name_ja": "散歩",
   "display_name_en": "Walking",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.running",
@@ -1365,7 +1365,7 @@
   "display_name_ja": "走る",
   "display_name_en": "Running",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.cycling",
@@ -1373,7 +1373,7 @@
   "display_name_ja": "サイクリング",
   "display_name_en": "Cycling",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.swimming",
@@ -1381,7 +1381,7 @@
   "display_name_ja": "泳ぐ",
   "display_name_en": "Swimming",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.hiking",
@@ -1389,7 +1389,7 @@
   "display_name_ja": "ハイキング",
   "display_name_en": "Hiking",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.camping",
@@ -1397,7 +1397,7 @@
   "display_name_ja": "キャンプ",
   "display_name_en": "Camping",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.fishing",
@@ -1405,7 +1405,7 @@
   "display_name_ja": "釣り",
   "display_name_en": "Fishing",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.skiing",
@@ -1413,7 +1413,7 @@
   "display_name_ja": "スキー",
   "display_name_en": "Skiing",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.surfing",
@@ -1421,7 +1421,7 @@
   "display_name_ja": "サーフィン",
   "display_name_en": "Surfing",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.dancing",
@@ -1429,7 +1429,7 @@
   "display_name_ja": "踊る",
   "display_name_en": "Dancing",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.cooking",
@@ -1437,7 +1437,7 @@
   "display_name_ja": "料理",
   "display_name_en": "Cooking",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.reading",
@@ -1445,7 +1445,7 @@
   "display_name_ja": "読書",
   "display_name_en": "Reading",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.working",
@@ -1453,7 +1453,7 @@
   "display_name_ja": "仕事",
   "display_name_en": "Working",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.shopping",
@@ -1461,7 +1461,7 @@
   "display_name_ja": "買い物",
   "display_name_en": "Shopping",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.traveling",
@@ -1469,7 +1469,7 @@
   "display_name_ja": "旅行",
   "display_name_en": "Traveling",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.driving",
@@ -1477,7 +1477,7 @@
   "display_name_ja": "運転",
   "display_name_en": "Driving",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.painting",
@@ -1485,7 +1485,7 @@
   "display_name_ja": "絵を描く",
   "display_name_en": "Painting",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.photography",
@@ -1493,7 +1493,7 @@
   "display_name_ja": "写真撮影",
   "display_name_en": "Photography",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.gardening",
@@ -1501,7 +1501,7 @@
   "display_name_ja": "園芸",
   "display_name_en": "Gardening",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "activity.picnic",
@@ -1509,7 +1509,7 @@
   "display_name_ja": "ピクニック",
   "display_name_en": "Picnic",
   "category": "activity",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.sunny",
@@ -1517,7 +1517,7 @@
   "display_name_ja": "晴れ",
   "display_name_en": "Sunny",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.cloudy",
@@ -1525,7 +1525,7 @@
   "display_name_ja": "曇り",
   "display_name_en": "Cloudy",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.rainy",
@@ -1533,7 +1533,7 @@
   "display_name_ja": "雨の日",
   "display_name_en": "Rainy",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.snowy",
@@ -1541,7 +1541,7 @@
   "display_name_ja": "雪の日",
   "display_name_en": "Snowy",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.windy",
@@ -1549,7 +1549,7 @@
   "display_name_ja": "風の強い日",
   "display_name_en": "Windy",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.morning",
@@ -1557,7 +1557,7 @@
   "display_name_ja": "朝",
   "display_name_en": "Morning",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.noon",
@@ -1565,7 +1565,7 @@
   "display_name_ja": "昼",
   "display_name_en": "Noon",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.evening",
@@ -1573,7 +1573,7 @@
   "display_name_ja": "夕方",
   "display_name_en": "Evening",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.night",
@@ -1581,7 +1581,7 @@
   "display_name_ja": "夜",
   "display_name_en": "Night",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.spring",
@@ -1589,7 +1589,7 @@
   "display_name_ja": "春",
   "display_name_en": "Spring",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.summer",
@@ -1597,7 +1597,7 @@
   "display_name_ja": "夏",
   "display_name_en": "Summer",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.autumn",
@@ -1605,7 +1605,7 @@
   "display_name_ja": "秋",
   "display_name_en": "Autumn",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "weather_time.winter",
@@ -1613,7 +1613,7 @@
   "display_name_ja": "冬",
   "display_name_en": "Winter",
   "category": "weather_time",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.red",
@@ -1621,7 +1621,7 @@
   "display_name_ja": "赤",
   "display_name_en": "Red",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.orange",
@@ -1629,7 +1629,7 @@
   "display_name_ja": "オレンジ色",
   "display_name_en": "Orange",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.yellow",
@@ -1637,7 +1637,7 @@
   "display_name_ja": "黄色",
   "display_name_en": "Yellow",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.green",
@@ -1645,7 +1645,7 @@
   "display_name_ja": "緑",
   "display_name_en": "Green",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.blue",
@@ -1653,7 +1653,7 @@
   "display_name_ja": "青",
   "display_name_en": "Blue",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.purple",
@@ -1661,7 +1661,7 @@
   "display_name_ja": "紫",
   "display_name_en": "Purple",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.pink",
@@ -1669,7 +1669,7 @@
   "display_name_ja": "ピンク",
   "display_name_en": "Pink",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.brown",
@@ -1677,7 +1677,7 @@
   "display_name_ja": "茶色",
   "display_name_en": "Brown",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.black",
@@ -1685,7 +1685,7 @@
   "display_name_ja": "黒",
   "display_name_en": "Black",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.white",
@@ -1693,7 +1693,7 @@
   "display_name_ja": "白",
   "display_name_en": "White",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.gray",
@@ -1701,7 +1701,7 @@
   "display_name_ja": "灰色",
   "display_name_en": "Gray",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  },
  {
   "id": "color.gold",
@@ -1709,6 +1709,6 @@
   "display_name_ja": "金色",
   "display_name_en": "Gold",
   "category": "color",
-  "threshold": 0.62
+  "threshold": 3.0
  }
 ]
