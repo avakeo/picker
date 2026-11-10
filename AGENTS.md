@@ -89,11 +89,65 @@ Eagle のようなローカル画像管理デスクトップアプリ。ユー�
 
 ## コマンド
 
-T0-1 と T0-2 の完了後に、次の項目の実行方法をここに追記すること。
+### 開発用の起動
 
-- 開発用の起動
-- Rust のビルド・テスト・フォーマット・静的解析
-- フロントエンドの型チェック・lint・テスト
-- TypeScript の型生成と、その検査
-- 時間のかかるテストの実行
-- 依存の脆弱性・ライセンス検査
+```sh
+npm install
+npm run tauri dev
+```
+
+フロントエンド単体で確認する場合は `npm run dev` を使う。
+
+### Rust
+
+```sh
+cargo fmt --all --check
+cargo check --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-targets --all-features
+```
+
+### フロントエンド
+
+```sh
+npm ci
+npm run check
+npm run lint
+npm run build
+```
+
+フロントエンドの単体テスト基盤はまだ導入していない。導入後はこの節と CI に追加する。
+
+### TypeScript 型生成
+
+Rust 側の UI 契約型を変更したら、生成物を同じコミットに含める。
+
+```sh
+cargo run -p picker-app --bin generate-types
+cargo run -p picker-app --bin generate-types -- --check
+```
+
+2つ目のコマンドはコミット済み生成物が最新か検査し、CI でも実行される。
+
+### 時間のかかるテスト
+
+現時点ではモデル推論や大量画像を使う時間のかかるテストはない。導入時は通常のテストと分離し、明示的なコマンドとして追加する。
+
+### 依存の脆弱性・ライセンス検査
+
+```sh
+cargo deny check advisories licenses bans sources
+```
+
+`deny.toml` に許可ライセンス、依存ソース、複数バージョンの扱いを定義している。
+
+### SBOM とライセンス一覧
+
+依存を変えたら、`docs/sbom.cdx.json` と `docs/licenses.md` を作り直し、同じコミットに含める。アプリの「このアプリについて」は、この SBOM からライセンス一覧を表示する。
+
+```sh
+uv run scripts/generate-sbom.py
+uv run scripts/generate-sbom.py --check
+```
+
+2つ目のコマンドは CI でも実行され、ファイルが古いと失敗する。

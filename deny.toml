@@ -1,0 +1,43 @@
+[graph]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+unmaintained = "workspace"
+unsound = "all"
+
+[licenses]
+version = 2
+confidence-threshold = 0.8
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+# Tauri's platform-specific dependency graph currently requires several
+# parallel major versions; keep this visible in dependency review without
+# failing CI on transitive duplicates.
+multiple-versions = "allow"
+# Workspace crates intentionally use path dependencies without registry versions.
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

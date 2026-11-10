@@ -1,0 +1,15 @@
+# Rust
+/target/
+**/target/
+**/__pycache__/
+
+# Frontend
+/node_modules/
+/dist/
+/eval-data/
+
+# Tauri generated files
+/src-tauri/gen/
+
+# macOS
+.DS_Store

@@ -1,0 +1,18 @@
+[workspace]
+members = [
+    "src-tauri",
+    "crates/core",
+    "crates/store",
+    "crates/indexer",
+    "crates/fswatch",
+    "crates/imaging",
+    "crates/ml",
+    "crates/learn",
+    "crates/sidecar",
+]
+resolver = "2"
+
+[profile.dev.package."*"]
+# Image decoding and resizing in dependencies is many times slower without
+# optimization; workspace crates stay unoptimized for quick rebuilds.
+opt-level = 3

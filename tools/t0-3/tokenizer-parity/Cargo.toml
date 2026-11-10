@@ -1,0 +1,12 @@
+[package]
+name = "t0-3-tokenizer-parity"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }

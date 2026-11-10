@@ -1,0 +1,13 @@
+[package]
+name = "picker-indexer"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Resumable indexing pipeline for Picker"
+
+[dependencies]
+blake3 = "1"
+picker-store = { path = "../store" }
+
+[dev-dependencies]
+tempfile = "3"

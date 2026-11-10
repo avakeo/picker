@@ -1,0 +1,19 @@
+{
+  "normalization": "candidate_min_max",
+  "zero_range_score": 100,
+  "hard_limits": {
+    "model_total_bytes": 600000000,
+    "inference_ms_p95": 200,
+    "peak_memory_bytes": 1500000000
+  },
+  "metrics": [
+    {"column": "search_ndcg10", "direction": "higher", "weight": 20},
+    {"column": "similarity_recall10", "direction": "higher", "weight": 15},
+    {"column": "zero_shot_mean_ap", "direction": "higher", "weight": 15},
+    {"column": "custom_macro_f1", "direction": "higher", "weight": 15},
+    {"column": "load_ms_p95", "direction": "lower", "weight": 10},
+    {"column": "inference_ms_p95", "direction": "lower", "weight": 15},
+    {"column": "model_total_bytes", "direction": "lower", "weight": 5},
+    {"column": "peak_memory_bytes", "direction": "lower", "weight": 5}
+  ]
+}
